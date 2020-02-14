@@ -1,12 +1,12 @@
 ---
-title: "Figures and Supplement for Drought MS - Full model approach"
+title: "Main and Supplemental Figures and Tables for Drought MS - "
 knit: (function(input_file, encoding) {
   out_dir <- 'docs';
   rmarkdown::render(input_file,
  encoding=encoding,
  output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 author: "Teresa Bohner"
-date: "1/15/2020"
+date: "2/14/2020"
 output: 
   html_document:
     toc: true
@@ -59,7 +59,7 @@ l_leg <- read.csv("Processed Data/legacy_1post.csv") %>%
 
 ## Methods
 
-I collected tree ring data from 4 regions across California and performed analyses on detrended growth during drought years where water availability (SPEI) was in the bottom 15th percentile. All tree ring series were spline detrended.
+I collected tree ring data from 4 regions across California and performed analyses on detrended growth during drought years where water availability (SPEI) was in the bottom 10th percentile. All tree ring series were spline detrended.
 
 
 #### Key responses
@@ -74,6 +74,7 @@ Where $RWI_{pred}$ is the predicted growth for a tree given the post-drought yea
 
 ```{r meas, echo=FALSE, out.width = '50%', eval=F}
 knitr::include_graphics("drought measurements.png")
+fig.path = "output figures/"
 ```
 
 ```{r supp data, include=F}
@@ -171,7 +172,7 @@ drought
 
 ```
 
-## Modeling approach
+## Full model approach to Q3
 
 This approach differs in that here we explore the results of the full expression of the model to answer the above questions i.e. the most complex justifiable model. Each species is modeled independently. This approach is a way to avoid the model selection issues we discussed regarding the complexity of question 3. 
 
@@ -215,7 +216,7 @@ rfx <- ~(spei12 | Region)
 ```
 
 ## Results
-### Q1
+### Q1 Species differences
 ```{r q1_load}
 for(i in c(2:4)){
   assign(paste("resp", i, sep=""), readRDS(paste("Brms models/final rr models/resp", i, ".rds", sep="")), envir = .GlobalEnv)
@@ -413,7 +414,7 @@ plot_grid(p1, p2, legend, ncol=3, rel_widths = c(1, 1, 0.3))
 
 ```
 
-### Q2
+### Q2 Regional Differences
 ```{r q2_load}
 resp_list <- c("resp4_ac", "resp4_pj", "resp4_pl", "resp7_ac", "resp7_pj", "resp7_pl", "resp8_ac", "resp8_pj", "resp8_pl")
 for(i in resp_list) {
@@ -429,7 +430,6 @@ for(i in recov_list) {
 
 ```
 #### Growth Reduction
-Regional differences are crucial to dtermining growth reduction. Across all species at least two sites are significantly different from one another in intercept and spei slope. The site patterns across species are qualitatively consistent which is in line with the model selection supporting modeling all of the species together.
 
 ```{r resp_reg_table, cache=T}
 spp_list <- c("ac", "pj", "pl")
@@ -455,9 +455,28 @@ kable(w2_pj, "html", caption="Table SX. P. jeffreyi growth reduction WAIC table"
 kable(w2_pl, "html", caption="Table SX. P. lambertiana growth reduction WAIC table") 
 
 ```
+```{r resp_icc_tables}
+h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
+           "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"),
+       paste("sd_Region__spei12^2 / (sd_Region__Intercept^2 +",
+           "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
+
+temp <- hypothesis(resp8_ac, h, class=NULL)[[1]]
+temp$Hypothesis[1] <- "region intercept/total"
+temp$Hypothesis[2] <- "region slope/total"
+kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, growth reduction)") 
+temp <- hypothesis(resp8_pj, h, class=NULL)[[1]]
+temp$Hypothesis[1] <- "region intercept/total"
+temp$Hypothesis[2] <- "region slope/total"
+kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, growth reduction)") 
+temp <- hypothesis(resp8_pl, h, class=NULL)[[1]]
+temp$Hypothesis[1] <- "region intercept/total"
+temp$Hypothesis[2] <- "region slope/total"
+kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, growth reduction)") 
+
+```
 
 #### Recovery
-Regional effects appear to be less important for recovery as none of the intercepts growth reduction slopes for any sites are significantly different from one another. Note that these results differ from the simpler model as the CI are wider here (see other md).
 
 ```{r recov_reg_table, cache=T}
 spp_list <- c("ac", "pj", "pl")
@@ -481,6 +500,28 @@ for(i in spp_list) {
 kable(w2_ac, "html", caption = "Table SX. A. concolor recovery WAIC table") 
 kable(w2_pj, "html", caption = "Table SX. P. jeffreyi recovery WAIC table") 
 kable(w2_pl, "html", caption = "Table SX. P. lambertiana recovery WAIC table")
+```
+
+```{r recov_icc_tables}
+
+h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
+           "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"), 
+       paste("sd_Region__drought_fx^2 / (sd_Region__Intercept^2 +",
+           "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
+
+temp <- hypothesis(recov8_ac, h, class=NULL)[[1]]
+temp$Hypothesis[1] <- "region intercept/total"
+temp$Hypothesis[2] <- "region slope/total"
+kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, recovery)") 
+temp <- hypothesis(recov8_pj, h, class=NULL)[[1]]
+temp$Hypothesis[1] <- "region intercept/total"
+temp$Hypothesis[2] <- "region slope/total"
+kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, recovery)") 
+temp <- hypothesis(recov8_pl, h, class=NULL)[[1]]
+temp$Hypothesis[1] <- "region intercept/total"
+temp$Hypothesis[2] <- "region slope/total"
+kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, recovery)") 
+
 ```
 
 #### Main Figure
@@ -547,44 +588,7 @@ recov_cont <- bind_rows(mutate(cont_ac, Species="AC"),
 
 
 ```
-```{r q2_tables}
-h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
-           "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"),
-       paste("sd_Region__spei12^2 / (sd_Region__Intercept^2 +",
-           "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
 
-temp <- hypothesis(resp8_ac, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, growth reduction)") 
-temp <- hypothesis(resp8_pj, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, growth reduction)") 
-temp <- hypothesis(resp8_pl, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, growth reduction)") 
-
-h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
-           "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"), 
-       paste("sd_Region__drought_fx^2 / (sd_Region__Intercept^2 +",
-           "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
-
-temp <- hypothesis(recov8_ac, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, recovery)") 
-temp <- hypothesis(recov8_pj, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, recovery)") 
-temp <- hypothesis(recov8_pl, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, recovery)") 
-
-```
 
 ```{r q2_fig}
 abc <- c(AC="a)", PJ="b)", PL="c)")
@@ -754,7 +758,6 @@ grid.arrange(p1, p2, p3, p4, p5, p6, ncol=3)
 
 ```
 
-Median and 95% CI growth reduction regression coefficients for a) white fir, b) jeffrey pine, and c) sugar pine as well as recovery regression coefficients for d) white fir, e) jeffrey pine, and f) sugar pine. 
 
 ### Q3
 ```{r q3_load}
@@ -914,8 +917,6 @@ grid.arrange(p1, p2, ncol=1)
 ```
 
 #### Growth Reduction
-DBH, competition and their interaction with spei are surprisingly of little effect with the exception of the importance of DBH and its interaction with spei for Jeffrey pine where larger trees fare worse in more severe droughts.
-
 Keep in mind that in the scatter plots the drought intensity axis is flipped, so slope will appear to be wrong sign from the parameter estimate plots.
 
 
@@ -1095,7 +1096,6 @@ ggplot(test, aes(x = spei12, y = .value)) +
 ```
 
 #### Recovery
-Recovery shows some evidence that tree and stand characteristics are important to the overall drought response. White fir recovery is impacted by DBH, although this does not vary dramatically region to region. Recovery in two out of four populations of jeffrey pine are affected by competition through the interaction with growth reduction. In these locations recovery from episodes that result in growth reductions is better in dense areas and worse in areas with lower competition (potential microsite signal as mentioned earlier). Sugar pine in the two southern regions appears to be dependent on DBH and competition; larger trees and trees in more dense neighborhoods have better recovery.
 
 ```{r recov_full ac}
 test <- filter(l_leg, Species=="AC") %>%
