@@ -1,5 +1,10 @@
 ---
 title: "Figures and Supplement for Drought MS - Full model approach"
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 author: "Teresa Bohner"
 date: "1/15/2020"
 output: 
@@ -67,7 +72,7 @@ $$
 
 Where $RWI_{pred}$ is the predicted growth for a tree given the post-drought year conditions based on hierarchical Bayesian models of all growth years.
 
-```{r meas, echo=FALSE, out.width = '50%'}
+```{r meas, echo=FALSE, out.width = '50%', eval=F}
 knitr::include_graphics("drought measurements.png")
 ```
 
@@ -772,7 +777,7 @@ varlist <- function(predictor) {
     sym(paste("b_", predictor, ":comp", sep="")))
 }
 
-rmanip <- function(mod, vars, spp){
+manip <- function(mod, vars, spp){
   temp <- mod %>% 
     gather_draws(b_DBH, b_comp, !!vars[[4]], !!vars[[5]]) %>% 
     median_qi(.width = c(.95, .66)) %>% 
@@ -914,7 +919,7 @@ DBH, competition and their interaction with spei are surprisingly of little effe
 Keep in mind that in the scatter plots the drought intensity axis is flipped, so slope will appear to be wrong sign from the parameter estimate plots.
 
 
-```{r resp_full ac, cache=TRUE}
+```{r resp_full ac}
 test <- filter(l_leg, Species=="AC") %>%
   group_by(Region) %>% 
   data_grid(Y, spei12 = seq_range(spei12, n = 10),
@@ -973,7 +978,7 @@ ggplot(test, aes(x = spei12, y = .value)) +
 
 ```
 
-```{r resp_full pj, cache=TRUE}
+```{r resp_full pj}
 test <- filter(l_leg, Species=="PJ") %>%
   group_by(Region) %>% 
   data_grid(Y, spei12 = seq_range(spei12, n = 10),
@@ -1031,7 +1036,7 @@ ggplot(test, aes(x = spei12, y = .value)) +
   ggtitle("PJ DBH") 
 ```
 
-```{r resp_full pl, cache=TRUE}
+```{r resp_full pl}
 test <- filter(l_leg, Species=="PL") %>%
   group_by(Region) %>% 
   data_grid(Y, spei12 = seq_range(spei12, n = 10),
@@ -1092,7 +1097,7 @@ ggplot(test, aes(x = spei12, y = .value)) +
 #### Recovery
 Recovery shows some evidence that tree and stand characteristics are important to the overall drought response. White fir recovery is impacted by DBH, although this does not vary dramatically region to region. Recovery in two out of four populations of jeffrey pine are affected by competition through the interaction with growth reduction. In these locations recovery from episodes that result in growth reductions is better in dense areas and worse in areas with lower competition (potential microsite signal as mentioned earlier). Sugar pine in the two southern regions appears to be dependent on DBH and competition; larger trees and trees in more dense neighborhoods have better recovery.
 
-```{r recov_full ac, cache=TRUE}
+```{r recov_full ac}
 test <- filter(l_leg, Species=="AC") %>%
   group_by(Region) %>% 
   data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
@@ -1148,7 +1153,7 @@ ggplot(test, aes(x = drought_fx, y = .value)) +
   ggtitle("AC DBH") 
 ```
 
-```{r recov_full pj, cache=TRUE}
+```{r recov_full pj}
 test <- filter(l_leg, Species=="PJ") %>%
   group_by(Region) %>% 
   data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
@@ -1204,7 +1209,7 @@ ggplot(test, aes(x = drought_fx, y = .value)) +
   ggtitle("PJ DBH") 
 ```
 
-```{r recov_full pl, cache=TRUE}
+```{r recov_full pl}
 test <- filter(l_leg, Species=="PL") %>%
   group_by(Region) %>% 
   data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
