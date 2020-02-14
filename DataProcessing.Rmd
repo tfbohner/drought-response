@@ -475,7 +475,7 @@ write.csv(rings_field, "Processed Data/matched_rings_field.csv", row.names = F)
 ## Resistance, Recovery, Resilience (RRR) data
 Calculating mean for 3 years before and 3 years after, as well as resistance, recovery, and resilience. 
 
-```{r 3years, echo=F, results='hide'}
+```{r 3years, echo=F, results='hide', eval=F}
 rings_field$prev3 <- NA
 rings_field$next3 <- NA
 for(j in unique(rings_field$tree.uniqueID)) {
@@ -509,14 +509,17 @@ for(j in unique(allprism2$Site)) {
 
 Refer to the "DroughtSelection" shiny for more information. I used the bottom 10th percentile for drought years and only drought years with associated growth reduction.
 
-```{r RRR, echo=T, results='hide'}
+```{r cutoff, echo=T, results='hide'}
 climate <- allprism2 %>% 
   group_by(Site, Neighborhood) %>% 
   dplyr::select(-c(siteno, Region, hilo, spei18, spi18)) %>% 
   filter(!is.na(spei12)) %>% 
   mutate(cutoff=quantile(spei12, .10, na.rm=T), ### Here is the drought cutoff
          droughtyear=ifelse(spei12<cutoff, "yes","no")) %>% ungroup()
+```
 
+
+```{r RRR, echo=F, eval=F}
 rrr_data <- left_join(rings_field, climate, by=c("Site", "Neighborhood", "Year")) %>% 
   filter(droughtyear=="yes") %>% 
   mutate(reduction=ifelse(BAI<prev3, "yes", "no"))
@@ -734,7 +737,7 @@ l_leg1 <- filter(l_leg2, event=="post1")
 write.csv(l_leg1, "Processed Data/legacy_1post.csv", row.names = F)
 ```
 
-```{r legacy_ar, eval=F}
+```{r legacy_ar, echo=F, eval=F}
 # dfx_yearly <- read.csv("Processed Data/dfx_yearly.csv")
 
 mod <- readRDS("Brms models/spline_growth models/spline_growth12_alldata.rds")
