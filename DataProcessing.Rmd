@@ -1,0 +1,811 @@
+---
+title: "Data Processing"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+All data processing happens here: Products are saved in Processed data folder. All drought response data is based on BAI growth and lower 10th percentile spei years, but this can be changed here.
+
+### Products
+* detrended tree rings
+* annual climate data including SPEI
+* monthly climate data including SPEI
+* tree ring data joined with field data (diameter, competition etc.)
+* RRR framework data
+* Drought effect framework data
+* Recovery (legacy) data
+
+```{r packages, message=FALSE, warning=FALSE}
+library(dplR)
+library(tidyverse)
+library(kableExtra)
+library(knitr)
+library(SPEI)
+library(googledrive)
+library(googlesheets4)
+library(brms)
+
+```
+## Site Characteristics
+For consistent naming across data files. Note I'm also reading in the field data here to be manipulated later to keep the google code together
+
+```{r google, echo=T, results='hide'}
+## do authentication step first and copy id from google sheet url.
+drive_auth(cache = ".secrets")
+options(
+  gargle_oauth_cache = ".secrets",
+  gargle_oauth_email = "tbohn001@ucr.edu"
+)
+
+sheets_auth(cache = ".secrets")
+options(
+  gargle_oauth_cache = ".secrets",
+  gargle_oauth_email = "tbohn001@ucr.edu"
+)
+
+fielddata <- drive_get(as_id("1Y_PSgFJz4bSW00JYoRiVnXrCrhL776QA4dNSOWl4Clg"))
+dia_data <- read_sheet(fielddata, sheet = 2)
+sitechar <- read_sheet(fielddata, sheet=3)
+
+sitechar <- rename(sitechar, siteno=No.) %>% 
+  dplyr::select(c("Region", "siteno", "Site", "Site2", "Neighborhood", "hilo", "X", "Y"))
+
+sites <- dplyr::select(sitechar, Site2, siteno, Region, hilo) %>% 
+  group_by(Site2) %>% 
+  summarise_all(first)
+
+sites2 <- dplyr::select(sitechar, Site, Site2, siteno, Region, hilo) %>% 
+  group_by(Site2) %>% 
+  summarise_all(first)
+
+```
+
+## Tree Ring Data
+
+#### Note on missing rings
+
+When there is a missing ring in one of the two cores growth information is only taken from the core with growth information (not averaged).  When the ring is missing from both core samples the missing growth value is replaced with the mean growth for that tree but denoted as a missing ring for future analyses.
+
+```{r data, echo=T, results='hide'}
+bm <- read.rwl("Raw Data/RWL copies/Black_Mountain.rwl")
+names(bm)[str_detect(names(bm), "11PL1_3A")==T] <- "11PL1_1C"
+names(bm)[str_detect(names(bm), "11PL1_3B")==T] <- "11PL1_1D"
+
+sp <- read.rwl("Raw Data/RWL copies/Seven_Pines.rwl")
+bm_ids <- read.ids(bm, stc=c(2,5,1))
+sp_ids <- read.ids(sp, stc=c(2,5,1))
+
+bm_id_df <- bm_ids %>%
+  mutate(label=rownames(bm_ids),
+         Site="bm",
+         Species=str_sub(label, 3, 4),
+         Neighborhood=str_sub(label, 5, 5),
+         ID=ifelse(str_detect(label, "\\_")==TRUE, str_sub(label, 7, 7), str_sub(label, 6,7)),
+         tree=as.character(tree))
+
+bm_id_df_tree <- group_by(bm_id_df, tree, Site, Species, Neighborhood, ID) %>%
+  summarise(label=first(label))
+
+sp_id_df <- sp_ids %>%
+  mutate(label=rownames(sp_ids),
+         Site="sp",
+         Species=str_sub(label, 3, 4),
+         Neighborhood=str_sub(label, 5, 5),
+         ID=ifelse(str_detect(label, "\\_")==TRUE, str_sub(label, 7, 7), str_sub(label, 6,7)),
+         tree=as.character(tree))
+sp_id_df_tree <- group_by(sp_id_df, tree, Site, Species, Neighborhood, ID) %>%
+  summarise(label=first(label))
+
+lc <- read.rwl("Raw Data/RWL copies/Lilly_Creek.rwl")
+pp <- read.rwl("Raw Data/RWL copies/Peppermint.rwl")
+lc_ids <- read.ids(lc, stc=c(2,5,1))
+pp_ids <- read.ids(pp, stc=c(2,5,1))
+
+lc_id_df <- lc_ids %>%
+  mutate(label=rownames(lc_ids),
+         Site="lc",
+         Species=str_sub(label, 3, 4),
+         Neighborhood=str_sub(label, 5, 5), 
+         ID=str_sub(label, 7, 7),
+         tree=as.character(tree))
+lc_id_df_tree <- group_by(lc_id_df, tree, Site, Species, Neighborhood, ID) %>%
+  summarise(label=first(label))
+
+pp_id_df <- pp_ids %>%
+  mutate(label=rownames(pp_ids),
+         Site="pp",
+         Species=str_sub(label, 3, 4),
+         Neighborhood=str_sub(label, 5, 5), 
+         ID=str_sub(label, 7, 7),
+         tree=as.character(tree))
+pp_id_df_tree <- group_by(pp_id_df, tree, Site, Species, Neighborhood, ID) %>%
+  summarise(label=first(label))
+
+cm <- read.rwl("Raw Data/RWL copies/Crescent_Meadow.rwl")
+names(cm)[str_detect(names(cm), "4PJ2_1A")==T] <- "4PP2_1A"
+names(cm)[str_detect(names(cm), "4PJ2_1B")==T] <- "4PP2_1B"
+pr <- read.rwl("Raw Data/RWL copies/Pine_Ridge.rwl")
+cm_ids1 <- read.ids(cm[,which(str_length(colnames(cm))==7)], stc=c(1,5,1))
+cm_ids2 <- read.ids(cm[,which(str_length(colnames(cm))==8)], stc=c(1,6,1))
+cm_ids2$tree <- cm_ids2$tree + max(cm_ids1$tree)
+cm_ids <- rbind(cm_ids1, cm_ids2)
+
+pr_ids1 <- read.ids(pr[,which(str_length(colnames(pr))==7)], stc=c(1,5,1))
+pr_ids2 <- read.ids(pr[,which(str_length(colnames(pr))==8)], stc=c(1,6,1))
+pr_ids2$tree <- pr_ids2$tree + max(pr_ids1$tree)
+pr_ids3 <- read.ids(pr[,which(str_length(colnames(pr))==6)], stc=c(1,5,5))
+pr_ids3$tree <- pr_ids3$tree + max(pr_ids2$tree)
+pr_ids <- rbind(pr_ids1, pr_ids2, pr_ids3)
+
+cm_id_df <- cm_ids %>%
+  mutate(label=rownames(cm_ids),
+         Site="cm",
+         Species=str_sub(label, 2, 3),
+         tree=as.character(tree))
+cm_id_df$Neighborhood <- NA
+for(i in 1:nrow(cm_id_df)) {
+  if(str_detect(cm_id_df$label[i], "_")==TRUE) {
+    cm_id_df$Neighborhood[i] <- str_sub(cm_id_df$label[i], 4, 4)
+  } else NA
+}
+cm_id_df$ID <- NA
+for(i in 1:nrow(cm_id_df)) {
+  if(str_detect(cm_id_df$label[i], "_")==TRUE) {
+    cm_id_df$ID[i] <- str_sub(cm_id_df$label[i], 6, 6)
+  } else cm_id_df$ID[i] <- str_sub(cm_id_df$label[i], 4, 7)
+}
+cm_id_df$ID <- str_replace_all(cm_id_df$ID, "A", "")
+cm_id_df$ID <- str_replace_all(cm_id_df$ID, "B", "")
+cm_id_df$Neighborhood <- ifelse(cm_id_df$ID%in%c(102, 105, 117, 118, 122), 1, 
+                                ifelse(cm_id_df$ID%in%c(1924, 3064, 3085, 3101), 2,
+                                       ifelse(cm_id_df$ID%in%c(1954, 1959, 1965, 1966, 1967), 3, cm_id_df$Neighborhood))) 
+
+cm_id_df_tree <- group_by(cm_id_df, tree, Site, Species, Neighborhood, ID) %>%
+  summarise(label=first(label))
+
+pr_id_df <- pr_ids %>%
+  mutate(label=rownames(pr_ids),
+         Site="pr",
+         Species=str_sub(label, 2, 3),
+         tree=as.character(tree))
+pr_id_df$Neighborhood <- NA
+for(i in 1:nrow(pr_id_df)) {
+  if(str_detect(pr_id_df$label[i], "_")==TRUE) {
+    pr_id_df$Neighborhood[i] <- str_sub(pr_id_df$label[i], 4, 4)
+  } else NA
+}
+pr_id_df$ID <- NA
+for(i in 1:nrow(pr_id_df)) {
+  if(str_detect(pr_id_df$label[i], "_")==TRUE) {
+    pr_id_df$ID[i] <- str_sub(pr_id_df$label[i], 6, 6)
+  } else pr_id_df$ID[i] <- str_sub(pr_id_df$label[i], 4, 7)
+}
+pr_id_df$ID <- str_replace_all(pr_id_df$ID, "A", "")
+pr_id_df$ID <- str_replace_all(pr_id_df$ID, "B", "")
+
+pr_id_df$ID[which(pr_id_df$ID==5434)] <- 543
+
+pr_id_df$Neighborhood <- ifelse(pr_id_df$ID%in%c(497, 3150, 3157), 1,
+                                ifelse(pr_id_df$ID%in%c(528, 533, 543, 552, 3001), 2,
+                                       ifelse(pr_id_df$ID%in%c(598, 604), 3, pr_id_df$Neighborhood)))
+
+pr_id_df_tree <- group_by(pr_id_df, tree, Site, Species, Neighborhood, ID) %>%
+  summarise(label=first(label))
+
+
+ic <- read.rwl("Raw Data/RWL copies/Inyo_Craters.rwl")
+names(ic)[str_detect(names(ic), "9AC1_1A")==T] <- "9AM1_1A"
+names(ic)[str_detect(names(ic), "9AC1_1B")==T] <- "9AM1_1B"
+sl <- read.rwl("Raw Data/RWL copies/Sherwin_Lakes.rwl")
+ic_ids <- read.ids(ic, stc=c(1,5,1))
+sl_ids <- read.ids(sl, stc=c(2,5,1))
+
+ic_id_df <- ic_ids %>%
+  mutate(label=rownames(ic_ids),
+         Site="ic",
+         Species=str_sub(label, 2, 3),
+         Neighborhood=str_sub(label, 4, 4), 
+         ID=str_sub(label, 6, 6),
+         tree=as.character(tree))
+ic_id_df_tree <- group_by(ic_id_df, tree, Site, Species, Neighborhood, ID) %>%
+  summarise(label=first(label))
+
+sl_id_df <- sl_ids %>%
+  mutate(label=rownames(sl_ids),
+         Site="sl",
+         Species=str_sub(label, 3, 4),
+         Neighborhood=str_sub(label, 5, 5), 
+         ID=str_sub(label, 7, 7),
+         tree=as.character(tree))
+sl_id_df_tree <- group_by(sl_id_df, tree, Site, Species, Neighborhood, ID) %>%
+  summarise(label=first(label))
+
+for(i in c("sp", "bm", "lc", "pp", "pr", "cm", "ic", "sl")){ 
+  temp <- get(i)
+  temp[temp == 0] <- NA
+  treeave <- treeMean(temp, get(paste(i,"_ids", sep="")), na.rm = T)
+  zero <- fill.internal.NA(treeave, 0)
+  zero$Year <- as.numeric(rownames(zero))
+
+  treeave <- fill.internal.NA(treeave, "Mean")
+  raw <- treeave
+  raw$Year <- as.numeric(rownames(raw))
+  
+  bai <- bai.out(raw, diam = NULL)
+  bai$Year <- as.numeric(rownames(bai))
+  
+  spl <- detrend(rwl = treeave, method="Spline")
+  spl$Year <- as.numeric(rownames(spl))
+  
+  fss <- detrend(rwl = treeave, method="Friedman")
+  fss$Year <- as.numeric(rownames(fss))
+  
+  dat<- gather(zero, key="tree", "temp", -Year) %>%
+    mutate(zeroRing=ifelse(temp==0, "yes", "no")) %>% 
+    dplyr::select(-temp) %>% 
+    left_join(gather(raw, key="tree", "raw_growth", -Year)) %>%
+    left_join(gather(bai, key="tree", "BAI", -Year)) %>%
+    left_join(gather(spl, key="tree", "spline_growth", -Year)) %>%
+    left_join(gather(fss, key="tree", "fss_growth", -Year)) %>%
+    na.omit() %>%
+    left_join(get(paste(i,"_id_df_tree", sep=""))) %>%
+    filter(Year>=1895)
+  
+  if(i=="sp"){allrings_loop <- dat
+  } else allrings_loop <- rbind(allrings_loop, dat)
+  
+}
+
+allrings <- allrings_loop %>% 
+  left_join(sites, by=c("Site"="Site2")) %>% 
+  mutate(tree.uniqueID = tolower(paste(paste(siteno, Species, Neighborhood, sep=""), ID, sep="_"))) %>% 
+  dplyr::select( -tree) %>% 
+  mutate_at(c("Neighborhood", "ID"), as.numeric)
+
+write.csv(allrings, "Processed Data/detrended_rings_allsites.csv", row.names=F)
+```
+
+## Crossdating summary stats
+```{r summarystats, echo=FALSE}
+sj_summary <- bind_rows(rwi.stats(sp, sp_ids, prewhiten=T)%>% mutate(site='seven pines'),
+                        rwi.stats(bm, bm_ids, prewhiten=T)%>% mutate(site='black mountain'))
+sj_summary <- sj_summary[c(14, 1:13)]
+kable(sj_summary, caption = "San Jacinto") %>% kable_styling()
+
+senf_summary <- bind_rows(rwi.stats(lc, lc_ids, prewhiten=T)%>% mutate(site='lilly creek'),
+                        rwi.stats(pp, pp_ids, prewhiten=T)%>% mutate(site='peppermint'))
+senf_summary <- senf_summary[c(14, 1:13)]
+kable(senf_summary, caption = "Sequoia National Forest") %>% kable_styling()
+
+seki_summary <- bind_rows(rwi.stats(cm, cm_ids, prewhiten=T)%>% mutate(site='crescent meadow'),
+                        rwi.stats(pr, pr_ids, prewhiten=T)%>% mutate(site='pine ridge'))
+seki_summary <- seki_summary[c(14, 1:13)]
+kable(seki_summary, caption = "Sequoia National Park") %>% kable_styling()
+
+mamm_summary <- bind_rows(rwi.stats(ic, ic_ids, prewhiten=T)%>% mutate(site='inyo craters'),
+                        rwi.stats(sl, sl_ids, prewhiten=T)%>% mutate(site='sherwin lakes'))
+mamm_summary <- mamm_summary[c(14, 1:13)]
+kable(mamm_summary, caption = "Mammoth Lakes") %>% kable_styling()
+```
+
+## SPEI calculation 
+
+Merged PRISM data from Bob and email request for recent years. Calculate SPEI from PET (Thornwaithe) and include this with the long-form PRISM data.
+
+```{r climate data, echo=T, results='hide'}
+sitelocations <- read.csv("Raw Data/locations for prism.csv") 
+recentyears <- read.csv("Raw Data/prism data/PRISM_ppt_tmin_tmean_tmax_stable_800m_201101_201812_Diez_sites_v2.csv", skip=9, header=T) %>%
+  mutate(Elevation_m=Elevation..ft.*0.3048,
+         ppt_mm=ppt..inches.*25.4,
+         tmean_C=(tmean..degrees.F.-32)*(5/9),
+         Date=as.character(Date),
+         Name=as.character(Name)) %>%
+  dplyr::select(c(Name, Longitude, Latitude, Date, ppt_mm, tmean_C)) %>%
+  na.omit() %>%
+  filter(Date>=2015)
+
+bobtemp <- read.csv("Raw Data/prism data/tmean189501_201412.csv", header=T) %>%  
+  gather(key="Date", value="tmean_C", -c(place, y, x)) %>%
+  rename(Name=place, Longitude=x, Latitude=y) %>%
+  mutate(Year=str_sub(Date, 2, 5),
+         Month=str_sub(Date, 6, 7),
+         Date=paste(Year, Month, sep='-'),
+         Name=as.character(Name)) %>%
+  dplyr::select(Name, Longitude, Latitude, Date, tmean_C) #%>% 
+  # filter(Date<2011)
+
+bobppt <- read.csv("Raw Data/prism data/ppt.csv", header=T) %>%
+  gather(key="Date", value="ppt_mm", -c(place, y, x)) %>%
+  rename(Name=place, Longitude=x, Latitude=y) %>%
+  mutate(Year=str_sub(Date, 2, 5),
+         Month=str_sub(Date, 6, 7),
+         Date=paste(Year, Month, sep='-')) %>%
+  dplyr::select(Name, Longitude, Latitude, Date, ppt_mm) #%>%
+  # filter(Date<2011)
+
+bobdata <- left_join(bobtemp, bobppt)
+
+allprism <- bind_rows(recentyears, bobdata) %>%
+  mutate(Year=as.numeric(str_sub(Date, 1, 4)),
+         Month=as.numeric(str_sub(Date, 6,7)))%>%
+  arrange(Name, Date)
+
+## SPEI calculation starts here
+wide_tmean <- pivot_wider(allprism, id_cols=-c(Latitude, Longitude, ppt_mm), 
+                          names_from = Name, values_from = tmean_C) %>%
+  arrange(Year, Month)
+wide_ppt <- pivot_wider(allprism, id_cols=-c(Latitude, Longitude, tmean_C), 
+                        names_from = Name, values_from = ppt_mm)%>%
+  arrange(Year, Month)
+
+## PET and Balance calculations (need to be in matrix form for multi-site calculations)
+pet <- as.data.frame(thornthwaite(wide_tmean[,4:27], sitelocations$Y)) 
+bal <- wide_ppt[,4:27] - pet
+
+ppt_ts  <- ts(wide_ppt[,4:27], end=c(2018, 12), frequency=12) 
+prism_ts <- ts(bal, end=c(2018, 12), frequency=12) ## time series for following calculations
+
+spei1 <- spei(prism_ts, 1) ## one-month SPEI
+spei1_df <- as.data.frame(spei1$fitted) %>%
+  mutate(Year=wide_tmean$Year,
+         Month=wide_tmean$Month) %>%
+  gather(key="Name", value="spei1",-c(Year, Month))
+spei6 <- spei(prism_ts, 6) ## six-month SPEI
+spei6_df <- as.data.frame(spei6$fitted) %>%
+  mutate(Year=wide_tmean$Year,
+         Month=wide_tmean$Month) %>%
+  gather(key="Name", value="spei6",-c(Year, Month))
+spei12 <- spei(prism_ts, 12) ## twelve-month SPEI
+spei12_df <- as.data.frame(spei12$fitted) %>%
+  mutate(Year=wide_tmean$Year,
+         Month=wide_tmean$Month) %>%
+  gather(key="Name", value="spei12",-c(Year, Month))
+spei18 <- spei(prism_ts, 18) ## twelve-month SPEI
+spei18_df <- as.data.frame(spei18$fitted) %>%
+  mutate(Year=wide_tmean$Year,
+         Month=wide_tmean$Month) %>%
+  gather(key="Name", value="spei18",-c(Year, Month))
+
+spi12 <- spei(ppt_ts, 12) ## twelve-month SPEI
+spi12_df <- as.data.frame(spi12$fitted) %>%
+  mutate(Year=wide_tmean$Year,
+         Month=wide_tmean$Month) %>%
+  gather(key="Name", value="spi12",-c(Year, Month))
+spi18 <- spei(ppt_ts, 18) ## twelve-month SPEI
+spi18_df <- as.data.frame(spi18$fitted) %>%
+  mutate(Year=wide_tmean$Year,
+         Month=wide_tmean$Month) %>%
+  gather(key="Name", value="spi18",-c(Year, Month))
+
+allspei <- left_join(spei1_df, spei6_df) %>% left_join(spei12_df)%>% left_join(spei18_df)%>% left_join(spi12_df)%>% left_join(spi18_df)%>%
+  mutate(Site=str_sub(Name, 1,2),
+         Neighborhood=as.numeric(str_sub(Name, 3,3))) %>% 
+  left_join(sites, by=c("Site"="Site2"))
+
+sept_spei <- filter(allspei, Month==9)
+
+allprism2 <- allprism%>%
+  mutate(hydroyear = ifelse(Month>9, Year+1, Year)) %>% 
+  group_by(Name, hydroyear) %>% 
+  mutate(total_ppt_mm = sum(ppt_mm),
+         mean_temp_C = mean(tmean_C)) %>% 
+  filter(Month==9) %>% 
+  left_join(sept_spei) %>% 
+  dplyr::select(-c(ppt_mm, tmean_C))
+
+allprism3 <- allprism%>%
+  mutate(hydroyear = ifelse(Month>9, Year+1, Year)) %>% 
+  group_by(Name, hydroyear) %>% 
+  left_join(allspei) 
+
+# allprism2 <- pivot_wider(allprism, -c(Date, Year, ppt_mm, tmean_C), names_from=Month, values_from=c(spei1, spei6, spei12, spei18, spi12, spi18)) %>%
+#   mutate(Site=str_sub(Name, 1,2), Neighborhood=str_sub(Name,3,3))
+write.csv(allprism2, "Processed Data/precip_temp_spei.csv", row.names = F)
+write.csv(allprism3, "Processed Data/monthly_precip_temp_spei.csv", row.names = F)
+```
+
+## Field data
+This includes location, DBH, site characteristics, and hegyi index calculation.  Still a handful of id problems, verify field and gps data.
+
+```{r manip, echo=T, results='hide'}
+dia_data2 <- dia_data %>% 
+  dplyr::select(-Region) %>% 
+  left_join(sites2) %>% 
+  mutate(Species=tolower(paste(str_sub(Species, 1,1), str_sub(Species, 3,3), sep="")),
+         Species=ifelse(Species=="?", "xx",
+                         ifelse(Species=="x", "xx",
+                                ifelse(Species=="a?", "ax", Species))),
+         tree.uniqueID = tolower(paste(paste(siteno, Species, Neighborhood, sep=""), ID, sep="_")),
+         totDBH=rowSums(dplyr::select(., "DBH", "DBHstem2", "DBHstem3"), na.rm=T),
+         totDBH=ifelse(totDBH==0, NA, totDBH),
+         totDBH=ifelse(!is.na(DBHT3), DBHT3, 
+                       ifelse(!is.na(DBHT2), DBHT2, totDBH))) %>% 
+  
+  dplyr::select(c(tree.uniqueID, totDBH))
+# 
+# focalsub <- group_by(allrings, tree.uniqueID) %>%
+#   summarise()
+# 
+# test <-anti_join(focalsub, dia_data2)
+
+dist_mat <- read.csv("Raw Data/dist mat 20m.csv") %>% 
+  rename(focalID=InputID, compID=TargetID) %>% 
+  mutate_at(c("focalID", "compID"), as.character) %>% 
+  left_join(dia_data2, by=c("focalID"="tree.uniqueID")) %>%
+  rename(focalDBH=totDBH) %>% 
+  left_join(dia_data2, by=c("compID"="tree.uniqueID")) %>%
+  rename(compDBH=totDBH) %>% 
+  filter(focalID!=compID) %>% 
+  mutate(Distance=ifelse(Distance==0, 0.000001, Distance))
+
+# treeswithcoord <- group_by(dist_mat, focalID) %>%
+#   summarise() %>%
+#   filter(focalID%in%unique(allrings$tree.uniqueID))
+# 
+# test2 <- anti_join(focalsub, treeswithcoord, by=c("tree.uniqueID"="focalID"))
+
+hegyi <- dist_mat %>%
+  # na.omit() %>% 
+  group_by(focalID, focalDBH) %>%
+  mutate(ratio=(compDBH/focalDBH)/Distance,
+         simple=compDBH/Distance,
+         BA= 0.00007854*compDBH^2) %>%
+  summarise(hegyi=sum(ratio, na.rm=T),
+            simple_comp=(sum(simple, na.rm=T)),
+            BA = sum(BA, na.rm=T)) ### missing lots of dbh's
+
+hegyi_focal <- filter(hegyi, focalID%in%unique(allrings$tree.uniqueID)) %>%
+  rename(tree.uniqueID=focalID) %>% 
+  dplyr::select(-focalDBH)
+
+rings_field <- inner_join(allrings, hegyi_focal) %>%
+  left_join(dia_data2) %>%
+  rename(DBH=totDBH)
+
+write.csv(rings_field, "Processed Data/matched_rings_field.csv", row.names = F)
+```
+
+## Resistance, Recovery, Resilience (RRR) data
+Calculating mean for 3 years before and 3 years after, as well as resistance, recovery, and resilience. 
+
+```{r 3years, echo=F, results='hide'}
+rings_field$prev3 <- NA
+rings_field$next3 <- NA
+for(j in unique(rings_field$tree.uniqueID)) {
+  for(i in (min(rings_field$Year[which(rings_field$tree.uniqueID==j)])+3):(max(rings_field$Year[which(rings_field$tree.uniqueID==j)])-3)) {
+    rings_field$prev3[which(rings_field$tree.uniqueID==j&rings_field$Year==i)] <- mean(c(rings_field$BAI[which(rings_field$tree.uniqueID==j&rings_field$Year==i-3)],
+                                                          rings_field$BAI[which(rings_field$tree.uniqueID==j&rings_field$Year==i-2)],
+                                                          rings_field$BAI[which(rings_field$tree.uniqueID==j&rings_field$Year==i-1)]), na.rm=T)
+    rings_field$next3[which(rings_field$tree.uniqueID==j&rings_field$Year==i)] <- mean(c(rings_field$BAI[which(rings_field$tree.uniqueID==j&rings_field$Year==i+3)],
+                                                          rings_field$BAI[which(rings_field$tree.uniqueID==j&rings_field$Year==i+2)],
+                                                          rings_field$BAI[which(rings_field$tree.uniqueID==j&rings_field$Year==i+1)]), na.rm=T)
+  }
+}
+
+allprism2$spei_prev3 <- NA
+allprism2$spei_next3 <- NA
+for(j in unique(allprism2$Site)) {
+  for(k in unique(allprism2$Neighborhood)) {
+    for(i in 1899:2018) {
+      allprism2$spei_prev3[which(allprism2$Site==j&allprism2$Neighborhood==k&allprism2$Year==i)] <- mean(c(allprism2$spei12[which(allprism2$Site==j&allprism2$Neighborhood==k&allprism2$Year==i-3)],
+                                                          allprism2$spei12[which(allprism2$Site==j&allprism2$Neighborhood==k&allprism2$Year==i-2)],
+                                                          allprism2$spei12[which(allprism2$Site==j&allprism2$Neighborhood==k&allprism2$Year==i-1)]), na.rm=T)
+    allprism2$spei_next3[which(allprism2$Site==j&allprism2$Neighborhood==k&allprism2$Year==i)] <- mean(c(allprism2$spei12[which(allprism2$Site==j&allprism2$Neighborhood==k&allprism2$Year==i+3)],
+                                                          allprism2$spei12[which(allprism2$Site==j&allprism2$Neighborhood==k&allprism2$Year==i+2)],
+                                                          allprism2$spei12[which(allprism2$Site==j&allprism2$Neighborhood==k&allprism2$Year==i+1)]), na.rm=T)
+    }
+  }
+}
+```
+
+#### Drought cutoff can be changed here:
+
+Refer to the "DroughtSelection" shiny for more information. I used the bottom 10th percentile for drought years and only drought years with associated growth reduction.
+
+```{r RRR, echo=T, results='hide'}
+climate <- allprism2 %>% 
+  group_by(Site, Neighborhood) %>% 
+  dplyr::select(-c(siteno, Region, hilo, spei18, spi18)) %>% 
+  filter(!is.na(spei12)) %>% 
+  mutate(cutoff=quantile(spei12, .10, na.rm=T), ### Here is the drought cutoff
+         droughtyear=ifelse(spei12<cutoff, "yes","no")) %>% ungroup()
+
+rrr_data <- left_join(rings_field, climate, by=c("Site", "Neighborhood", "Year")) %>% 
+  filter(droughtyear=="yes") %>% 
+  mutate(reduction=ifelse(BAI<prev3, "yes", "no"))
+
+length(which(rrr_data$reduction=="yes"))
+length(which(rrr_data$reduction=="no"))
+
+rrr_data <- rrr_data %>% 
+  mutate(resistance = BAI/prev3,
+         recovery = next3/BAI,
+         resilience = next3/prev3,
+         rel_res = resilience-resistance,
+         drought_fx3 = (prev3-BAI)/BAI)
+
+
+write.csv(rrr_data, "Processed Data/RRR_data.csv", row.names = F)
+```
+
+## Drought effect data
+Drought effects sensu Kannenberg et al 2019
+
+```{r drought_fx, echo=T, results='hide'}
+dfx_data <- inner_join(rings_field, climate, by=c("Site", "Neighborhood", "Year")) 
+
+dfx_data$post1 <- NA
+dfx_data$post2 <- NA
+dfx_data$spei_post1 <- NA
+dfx_data$spei_post2 <- NA
+
+for(j in unique(dfx_data$tree.uniqueID)) {
+  for(i in (min(dfx_data$Year[which(dfx_data$tree.uniqueID==j)])):(max(dfx_data$Year[which(dfx_data$tree.uniqueID==j)])-1)) {
+    dfx_data$post1[which(dfx_data$tree.uniqueID==j&dfx_data$Year==i)] <- dfx_data$spline_growth[which(dfx_data$tree.uniqueID==j&dfx_data$Year==i+1)]
+    dfx_data$spei_post1[which(dfx_data$tree.uniqueID==j&dfx_data$Year==i)] <- dfx_data$spei12[which(dfx_data$tree.uniqueID==j&dfx_data$Year==i+1)]
+  }
+}
+
+for(j in unique(dfx_data$tree.uniqueID)) {
+  for(i in (min(dfx_data$Year[which(dfx_data$tree.uniqueID==j)])):(max(dfx_data$Year[which(dfx_data$tree.uniqueID==j)])-2)) {
+    dfx_data$post2[which(dfx_data$tree.uniqueID==j&dfx_data$Year==i)] <- dfx_data$spline_growth[which(dfx_data$tree.uniqueID==j&dfx_data$Year==i+2)]
+    dfx_data$spei_post2[which(dfx_data$tree.uniqueID==j&dfx_data$Year==i)] <- dfx_data$spei12[which(dfx_data$tree.uniqueID==j&dfx_data$Year==i+2)]
+  }
+}
+
+dfx_data <- mutate(dfx_data,
+                   Year_post1 = Year+1,
+                   Year_post2 = Year+2)
+
+dfx_summary <- dfx_data %>% 
+  group_by(Region, Site, hilo, Species, Neighborhood, tree.uniqueID, droughtyear, hegyi, simple_comp, BA, DBH) %>% 
+  summarise(growth=mean(spline_growth, na.rm=T),#fss_growth
+            post1=mean(post1, na.rm=T),
+            post2=mean(post1, na.rm=T)) %>% 
+  pivot_wider(names_from="droughtyear", values_from=c("growth", "post1","post2")) %>% 
+  dplyr::select(-c(post1_no, post2_no)) %>% 
+  rename(no=growth_no, yes=growth_yes, post1=post1_yes, post2=post2_yes) %>% 
+  mutate(diff=no-yes,
+         drought_fx=(no-yes)/no,
+         post1_fx=(no-post1)/no,
+         post2_fx=(no-post2/no))
+
+dfx_yearly <- dfx_data %>% 
+  group_by(tree.uniqueID, droughtyear) %>% 
+  mutate(avg_growth=mean(spline_growth, na.rm=T), #fss_growth
+         diff=avg_growth-spline_growth, #fss_growth
+         reduction=ifelse(diff>0, "yes", "no"),
+         drought_fx=(avg_growth-spline_growth)/avg_growth, #fss_growth
+         post1_fx=(avg_growth-post1)/avg_growth,
+         post2_fx=(avg_growth-post2)/avg_growth) %>% 
+  filter(droughtyear=="yes")
+
+write.csv(dfx_summary, "Processed Data/dfx_summary.csv")
+write.csv(dfx_yearly, "Processed Data/dfx_yearly.csv")
+
+```
+
+Recovery/legacy is calculated as
+$$
+Recovery = RWI_{actual} - RWI_{pred}
+$$
+
+To calculate $RWI_{pred}$ I modeled RWI as a function Species and SPEI I used the 'brms' package in R. For simplicity I denoted here site-specific regression coefficients, but they were modeled as elevation nested within region.
+$$
+RWI_{pred_{i}} = Normal(\mu_i, \sigma_i)
+$$
+
+$$
+\mu_i = \alpha_{neighborhood_i} + \alpha_{treeID_i} + \beta_{1 neighborhood_i}Species_i + \beta_{2 neighborhood_i}SPEI_{i} + \beta_{3 neighborhood_i}Species_i\times SPEI_i
+$$
+
+$$
+\left[\begin{array}
+{rrr}
+\alpha_{neighborhood} \\
+\beta_{1neighborhood} \\
+\beta_{2neighborhood} \\
+\beta_{3neighborhood}
+\end{array}\right] 
+
+=
+
+MVNormal\left(\left[\begin{array}
+{rrr}
+\alpha \\
+\beta_1 \\
+\beta_2 \\
+\beta_3 \\
+\end{array}\right], \mathbf{S} \right)
+$$
+I think???? where **S** is the covariance matrix.  Can report priors here.
+```{r legacy, echo=T, results='hide'}
+# dfx_yearly <- read.csv("Processed Data/dfx_yearly.csv")
+
+mod <- readRDS("Brms models/spline_growth models/spline_growth11_alldata.rds")
+
+dfx_data <- filter(dfx_yearly, zeroRing=="no", Species!="AM") %>% 
+  mutate(unique.nb = paste0(Site, Neighborhood, sep="")) %>% 
+  ungroup()
+dfx_data$Species[str_which(dfx_data$Species, "PP")] <- "PJ" 
+# dfx_data$Species <- droplevels(dfx_data$Species)
+
+for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
+  print(i)
+  for(j in unique(dfx_data$Year[which(dfx_data$tree.uniqueID==i)])) {
+    newdata <- filter(dfx_data, tree.uniqueID==i&Year==j) %>%
+      dplyr::select(c(spei_post1, Species, unique.nb, tree.uniqueID, post1)) %>%
+      rename(spei12=spei_post1)
+
+    pred_grow <- fitted(mod, newdata=newdata, summary=FALSE, nsamples = 1000)
+    newy_df <- data.frame(pred_grow) %>%
+      mutate(tree.uniqueID=i,
+             Year=j,
+             post1=newdata$post1,
+             diff=post1-pred_grow)
+    if(i==first(unique(dfx_data$tree.uniqueID))&j==min(dfx_data$Year[which(dfx_data$tree.uniqueID==i)])) {
+      big_df <- newy_df
+    } else {big_df <- bind_rows(big_df, newy_df)}
+  }
+}
+
+# for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
+#   print(i)
+#   for(j in unique(dfx_data$Year[which(dfx_data$tree.uniqueID==i)])) {
+#     newdata <- filter(dfx_data, tree.uniqueID==i&Year==j) %>% 
+#       dplyr::select(c(spei_post2, Species, unique.nb, tree.uniqueID, post2)) %>% 
+#       rename(spei12=spei_post2)
+#     
+#     pred_grow <- fitted(mod, newdata=newdata, summary=FALSE, nsamples = 500)
+#     newy_df <- data.frame(pred_grow) %>% 
+#       mutate(tree.uniqueID=i,
+#              Year=j,
+#              post2=newdata$post2,
+#              diff=post2-pred_grow)
+#     if(i==first(unique(dfx_data$tree.uniqueID))&j==min(dfx_data$Year[which(dfx_data$tree.uniqueID==i)])) {
+#       big_df2 <- newy_df
+#     } else {big_df2 <- bind_rows(big_df2, newy_df)}
+#   }
+# }
+
+legacy <- big_df %>%
+  group_by(tree.uniqueID, Year) %>%
+  summarise(pred_mean = mean(pred_grow, na.rm=T),
+            pred_50 = quantile(pred_grow, .5, na.rm=T),
+            pred_025 = quantile(pred_grow, .025, na.rm=T),
+            pred_975 = quantile(pred_grow, .975, na.rm=T),
+            leg1_mean = mean(diff, na.rm=T),
+            leg1_50 = quantile(diff, .5, na.rm=T),
+            leg1_025 = quantile(diff, .025, na.rm=T),
+            leg1_975 = quantile(diff, .975, na.rm=T)) %>%
+  left_join(dplyr::select(dfx_data, c(Year, Site, Species, Neighborhood, Region, hilo, tree.uniqueID, hegyi, simple_comp, BA, DBH, reduction,
+                               spei12, post1, post2, spei_post1, spei_post2, Year_post1, Year_post2, drought_fx)))
+
+
+# legacy2 <- big_df2 %>% 
+#   group_by(tree.uniqueID, Year) %>% 
+#   summarise(pred_mean = mean(pred_grow, na.rm=T),
+#             pred_50 = quantile(pred_grow, .5, na.rm=T),
+#             pred_025 = quantile(pred_grow, .025, na.rm=T),
+#             pred_975 = quantile(pred_grow, .975, na.rm=T),
+#             leg2_mean = mean(diff, na.rm=T),
+#             leg2_50 = quantile(diff, .5, na.rm=T),
+#             leg2_025 = quantile(diff, .025, na.rm=T),
+#             leg2_975 = quantile(diff, .975, na.rm=T)) %>% 
+#   dplyr::select(-c(pred_mean, pred_50, pred_025, pred_975)) %>% 
+#   left_join(legacy)
+
+legacy$X <- NULL
+l_leg <- pivot_longer(legacy, c(leg1_mean, leg1_50, leg1_025, leg1_975
+                                ), names_to = c("event","qi"), names_sep="_", #,leg2_mean, leg2_50, leg2_025, leg2_975
+                      values_to = "value") %>% 
+  dplyr::select(-c(spei_post1, Year_post1, Year_post2)) %>% 
+  pivot_wider(names_from="qi", values_from="value") %>% 
+  rename(legacy_mean=mean, legacy_50=`50`, legacy_025=`025`, legacy_975=`975`) %>% 
+  mutate(event=ifelse(event=="leg1", "post1", "post2"))
+
+l_leg2 <- dplyr::select(legacy, c(tree.uniqueID, Year, spei_post1, spei_post2, Year_post1, Year_post2)) %>% 
+  pivot_longer(c(spei_post1, spei_post2, Year_post1, Year_post2), names_to = c("dummy", "event"), 
+               names_sep="_", values_to="value") %>% 
+  mutate(dummy=ifelse(dummy=="spei", "spei_post", "year_post")) %>% 
+  pivot_wider(names_from="dummy", values_from="value") %>% 
+  left_join(l_leg) %>% 
+  group_by(event) %>% 
+  mutate(scaled_leg=(legacy_mean-min(legacy_mean, na.rm=T))/(max(legacy_mean, na.rm=T)-min(legacy_mean, na.rm=T)),
+         scaled_dfx=(drought_fx-min(drought_fx, na.rm=T))/(max(drought_fx, na.rm=T)-min(drought_fx, na.rm=T)),
+         scaled_spei=(1-(spei12-min(spei12, na.rm=T))/(max(spei12, na.rm=T)-min(spei12, na.rm=T))),
+         scaled_spei=ifelse(scaled_spei==0, 0.0001, scaled_spei),
+         Region1 =ifelse(Region=="San Jac", "lat1", ifelse(Region=="SENF", "lat2", ifelse(Region=="SEKI", "lat3", "lat4")))) %>% 
+  ungroup() %>% 
+  mutate(rel_dfx=scaled_dfx/scaled_spei,
+         rel_leg=scaled_leg/scaled_dfx,
+         recovery=legacy_mean)
+
+l_leg1 <- filter(l_leg2, event=="post1")
+
+# write.csv(l_leg2, "Processed Data/legacy_long.csv", row.names = F)
+write.csv(l_leg1, "Processed Data/legacy_1post.csv", row.names = F)
+```
+
+```{r legacy_ar, eval=F}
+# dfx_yearly <- read.csv("Processed Data/dfx_yearly.csv")
+
+mod <- readRDS("Brms models/spline_growth models/spline_growth12_alldata.rds")
+
+dfx_data <- filter(dfx_yearly, zeroRing=="no", Species!="AM") %>% 
+   mutate(unique.nb = paste0(Site, Neighborhood, sep=""))
+dfx_data$Species[str_which(dfx_data$Species, "PP")] <- "PJ" 
+# dfx_data$Species <- droplevels(dfx_data$Species)
+
+for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
+  print(i)
+  for(j in unique(dfx_data$Year[which(dfx_data$tree.uniqueID==i)])) {
+    newdata <- filter(dfx_data, tree.uniqueID==i&Year==j) %>%
+      dplyr::select(c(spei_post1, Species, Year, unique.nb, tree.uniqueID, post1)) %>%
+      rename(spei12=spei_post1)
+
+    pred_grow <- fitted(mod, newdata=newdata, summary=FALSE, nsamples = 500)
+    newy_df <- data.frame(pred_grow) %>%
+      mutate(tree.uniqueID=i,
+             Year=j,
+             post1=newdata$post1,
+             diff=post1-pred_grow)
+    if(i==first(unique(dfx_data$tree.uniqueID))&j==min(dfx_data$Year[which(dfx_data$tree.uniqueID==i)])) {
+      big_df <- newy_df
+    } else {big_df <- bind_rows(big_df, newy_df)}
+  }
+}
+
+legacy <- big_df %>% 
+  group_by(tree.uniqueID, Year) %>% 
+  summarise(pred_mean = mean(pred_grow, na.rm=T),
+            pred_50 = quantile(pred_grow, .5, na.rm=T),
+            pred_025 = quantile(pred_grow, .025, na.rm=T),
+            pred_975 = quantile(pred_grow, .975, na.rm=T),
+            leg1_mean = mean(diff, na.rm=T),
+            leg1_50 = quantile(diff, .5, na.rm=T),
+            leg1_025 = quantile(diff, .025, na.rm=T),
+            leg1_975 = quantile(diff, .975, na.rm=T)) %>% 
+  left_join(dplyr::select(dfx_data, c(Year, Site, Species, Neighborhood, Region, hilo, tree.uniqueID, hegyi, DBH, reduction,
+                               spei12, post1, post2, spei_post1, spei_post2, Year_post1, Year_post2, drought_fx)))
+
+
+legacy$X <- NULL
+l_leg <- pivot_longer(legacy, c(leg1_mean, leg1_50, leg1_025, leg1_975
+                                ), names_to = c("event","qi"), names_sep="_", #,leg2_mean, leg2_50, leg2_025, leg2_975
+                      values_to = "value") %>% 
+  dplyr::select(-c(spei_post1, spei_post2, Year_post1, Year_post2)) %>% 
+  pivot_wider(names_from="qi", values_from="value") %>% 
+  rename(legacy_mean=mean, legacy_50=`50`, legacy_025=`025`, legacy_975=`975`) %>% 
+  mutate(event=ifelse(event=="leg1", "post1", "post2"))
+
+l_leg2 <- dplyr::select(legacy, c(tree.uniqueID, Year, spei_post1, spei_post2, Year_post1, Year_post2)) %>% 
+  pivot_longer(c(spei_post1, spei_post2, Year_post1, Year_post2), names_to = c("dummy", "event"), 
+               names_sep="_", values_to="value") %>% 
+  mutate(dummy=ifelse(dummy=="spei", "spei_post", "year_post")) %>% 
+  pivot_wider(names_from="dummy", values_from="value") %>% 
+  left_join(l_leg) %>% 
+  group_by(event) %>% 
+  mutate(scaled_leg=(legacy_mean-min(legacy_mean, na.rm=T))/(max(legacy_mean, na.rm=T)-min(legacy_mean, na.rm=T)),
+         scaled_dfx=(drought_fx-min(drought_fx, na.rm=T))/(max(drought_fx, na.rm=T)-min(drought_fx, na.rm=T)),
+         scaled_spei=(1-(spei12-min(spei12, na.rm=T))/(max(spei12, na.rm=T)-min(spei12, na.rm=T))),
+         scaled_spei=ifelse(scaled_spei==0, 0.0001, scaled_spei),
+         Region1 =ifelse(Region=="San Jac", "lat1", ifelse(Region=="SENF", "lat2", ifelse(Region=="SEKI", "lat3", "lat4")))) %>% 
+  ungroup() %>% 
+  mutate(rel_dfx=scaled_dfx/scaled_spei,
+         rel_leg=scaled_leg/scaled_dfx,
+         recovery=legacy_mean)
+
+l_leg1 <- filter(l_leg2, event=="post1")
+
+# write.csv(l_leg2, "Processed Data/legacy_long.csv", row.names = F)
+write.csv(l_leg1, "Processed Data/legacy_1post_with ar.csv", row.names = F)
+
+```
