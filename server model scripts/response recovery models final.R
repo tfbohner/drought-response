@@ -5,8 +5,8 @@ library(brms)
 library(outliers)
 
 
-sitechar <- read.csv("data and md scripts/Raw Data/site characteristic table.csv")
-l_leg <- read.csv("data and md scripts/Processed Data/legacy_1post.csv") %>% 
+sitechar <- read.csv("Raw Data/site characteristic table.csv")
+l_leg <- read.csv("Processed Data/legacy_1post.csv") %>% 
   group_by(Species) %>%
   mutate(log_hegyi=log(hegyi),
          dfx_score=scores(drought_fx, type="z"),
@@ -25,11 +25,11 @@ summary <- group_by(l_leg, tree.uniqueID) %>%
   summarize(n_events=length(drought_fx))
 
 # for(i in 1:9){
-#   assign(paste("resp", i, sep=""), readRDS(paste("data and md scripts/Brms models/final rr models/resp", i, ".rds", sep="")), envir = .GlobalEnv)
+#   assign(paste("resp", i, sep=""), readRDS(paste("Brms models/final rr models/resp", i, ".rds", sep="")), envir = .GlobalEnv)
 # }
 # 
 # for(i in 1:10){
-#   assign(paste("recov", i, sep=""), readRDS(paste("data and md scripts/Brms models/final rr models/recov", i, ".rds", sep="")), envir = .GlobalEnv)
+#   assign(paste("recov", i, sep=""), readRDS(paste("Brms models/final rr models/recov", i, ".rds", sep="")), envir = .GlobalEnv)
 # }
 
 #### Q1: Species level differences----
@@ -57,7 +57,7 @@ resp4 <- update(resp0, formula. = ~ . + spei12*Species, newdata=l_leg, cores=4)
 
 for(i in 2:4){
   mod <- get(paste("resp", i, sep="")) 
-  saveRDS(mod, paste("data and md scripts/Brms models/final rr models/resp", i, ".rds", sep=""))
+  saveRDS(mod, paste("Brms models/final rr models/resp", i, ".rds", sep=""))
   
   mod <- get(paste("resp", i, sep="")) 
   lx <- loo(mod)
@@ -104,7 +104,7 @@ plot(marginal_effects(recov4), points = TRUE)
 
 for(i in 2:4){
   mod <- get(paste("recov", i, sep="")) 
-  saveRDS(mod, paste("data and md scripts/Brms models/final rr models/recov", i, ".rds", sep=""))
+  saveRDS(mod, paste("Brms models/final rr models/recov", i, ".rds", sep=""))
   
   mod <- get(paste("recov", i, sep="")) 
   lx <- loo(mod)
@@ -134,7 +134,7 @@ model_weights(recov1, recov2, recov3, recov4, weights = "waic")
 # 
 # for(i in 5:8){
 #   mod <- get(paste("resp", i, sep="")) 
-#   saveRDS(mod, paste("data and md scripts/Brms models/final rr models/resp", i, ".rds", sep=""))
+#   saveRDS(mod, paste("Brms models/final rr models/resp", i, ".rds", sep=""))
 #   
 #   mod <- get(paste("resp", i, sep="")) 
 #   lx <- loo(mod)
@@ -183,7 +183,7 @@ mod_list <- c("resp4_ac", "resp4_pj", "resp4_pl","resp5_ac", "resp5_pj", "resp5_
 
 for(i in mod_list) {
   mod <- get(mod_list[which(mod_list==i)])
-  saveRDS(mod, paste("data and md scripts/Brms models/final rr models/", i, ".rds", sep=""))
+  saveRDS(mod, paste("Brms models/final rr models/", i, ".rds", sep=""))
   
   lx <- loo(mod)
   assign(paste0("l_", i), lx)
@@ -221,7 +221,7 @@ mod_list <- c("recov4_ac", "recov4_pj", "recov4_pl","recov5_ac", "recov5_pj", "r
 
 for(i in mod_list) {
   mod <- get(mod_list[which(mod_list==i)])
-  saveRDS(mod, paste("data and md scripts/Brms models/final rr models/", i, ".rds", sep=""))
+  saveRDS(mod, paste("Brms models/final rr models/", i, ".rds", sep=""))
 
   lx <- loo(mod)
   assign(paste0("l_", i), lx)
@@ -247,12 +247,12 @@ spp_modeler2 <- function(data, spp, model) {
 # resp_full <- brm(drought_fx~spei12 + DBH + log_hegyi + spei12:DBH + spei12:log_hegyi +
 #                    (1|tree.uniqueID) + (spei12+DBH+log_hegyi|Region + Species),
 #                  data=l_leg, cores=4, prior=set_prior(horseshoe(df = 3, par_ratio = 0.1)), iter=4000, control=list(adapt_delta=0.999, max_treedepth=14))
-# saveRDS(resp_full, "data and md scripts/Brms models/final rr models/resp_full.rds")
+# saveRDS(resp_full, "Brms models/final rr models/resp_full.rds")
 # 
 # recov_full <- brm(recovery~drought_fx + DBH + log_hegyi + drought_fx:DBH + drought_fx:log_hegyi +
 #                    (1|tree.uniqueID) + (drought_fx+DBH+log_hegyi|Region + Species),
 #                  data=l_leg, cores=4, prior=set_prior(horseshoe(df = 3, par_ratio = 0.1)),  iter=4000, control=list(adapt_delta=0.999, max_treedepth=14))
-# saveRDS(recov_full, "data and md scripts/Brms models/final rr models/recov_full.rds")
+# saveRDS(recov_full, "Brms models/final rr models/recov_full.rds")
 
 
 
@@ -266,11 +266,11 @@ resp_mod <- bf(drought_fx~spei12 + DBH + comp + spei12:DBH + spei12:comp +
                  (spei12|Region))
 
 resp_full_ac <- spp_modeler(l_leg, "AC", resp_mod)
-saveRDS(resp_full_ac, "data and md scripts/Brms models/final rr models/resp_full_ac.rds")
+saveRDS(resp_full_ac, "Brms models/final rr models/resp_full_ac.rds")
 resp_full_pj <- spp_modeler2(l_leg, "PJ", resp_full_ac)
-saveRDS(resp_full_pj, "data and md scripts/Brms models/final rr models/resp_full_pj.rds")
+saveRDS(resp_full_pj, "Brms models/final rr models/resp_full_pj.rds")
 resp_full_pl <- spp_modeler2(l_leg, "PL", resp_full_ac)
-saveRDS(resp_full_pl, "data and md scripts/Brms models/final rr models/resp_full_pl.rds")
+saveRDS(resp_full_pl, "Brms models/final rr models/resp_full_pl.rds")
 
 
 # recov_mod <- bf(recovery~drought_fx + DBH + log_hegyi + drought_fx:DBH + drought_fx:log_hegyi + 
@@ -285,11 +285,11 @@ recov_mod <- bf(recovery~drought_fx + DBH + comp + drought_fx:DBH + drought_fx:c
                   (drought_fx|Region))
 
 recov_full_ac <- spp_modeler(l_leg, "AC", recov_mod)
-saveRDS(recov_full_ac, "data and md scripts/Brms models/final rr models/recov_full_ac.rds")
+saveRDS(recov_full_ac, "Brms models/final rr models/recov_full_ac.rds")
 recov_full_pj <- spp_modeler2(l_leg, "PJ", recov_full_ac)
-saveRDS(recov_full_pj, "data and md scripts/Brms models/final rr models/recov_full_pj.rds")
+saveRDS(recov_full_pj, "Brms models/final rr models/recov_full_pj.rds")
 recov_full_pl <- spp_modeler2(l_leg, "PL", recov_full_ac)
-saveRDS(recov_full_pl, "data and md scripts/Brms models/final rr models/recov_full_pl.rds")
+saveRDS(recov_full_pl, "Brms models/final rr models/recov_full_pl.rds")
 
 
 #### Scaled data ----
