@@ -311,6 +311,10 @@ resp_full_ac <- spp_modeler(newdat, "AC", resp_mod)
 resp_full_pj <- spp_modeler2(newdat, "PJ", resp_full_ac)
 resp_full_pl <- spp_modeler2(newdat, "PL", resp_full_ac)
 
+saveRDS(resp_full_ac, "Brms models/final rr models/resp_full_ac_scaled.rds")
+saveRDS(resp_full_pj, "Brms models/final rr models/resp_full_pj_scaled.rds")
+saveRDS(resp_full_pl, "Brms models/final rr models/resp_full_pl_scaled.rds")
+
 recov_mod <- bf(recovery~0 + Intercept + drought_fx + DBH + comp + drought_fx:DBH + drought_fx:comp + 
                   (1|tree.uniqueID) + 
                   (drought_fx|Region))
@@ -318,3 +322,7 @@ recov_mod <- bf(recovery~0 + Intercept + drought_fx + DBH + comp + drought_fx:DB
 recov_full_ac <- spp_modeler(newdat, "AC", recov_mod)
 recov_full_pj <- spp_modeler2(newdat, "PJ", recov_full_ac)
 recov_full_pl <- spp_modeler2(newdat, "PL", recov_full_ac)
+
+saveRDS(recov_full_ac, "Brms models/final rr models/recov_full_ac_scaled.rds")
+saveRDS(recov_full_pj, "Brms models/final rr models/recov_full_pj_scaled.rds")
+saveRDS(recov_full_pl, "Brms models/final rr models/recov_full_pl_scaled.rds")
