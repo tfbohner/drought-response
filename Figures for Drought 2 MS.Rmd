@@ -181,7 +181,7 @@ Reduction_i \sim Normal(\mu_i, \sigma_i)
 $$
 
 $$
-\mu_i = \alpha_{region_i} + \alpha_{treeID} + \beta_{1region_i}SPEI_i + \beta_{2region_i}DBH_i + \beta_{3region_i}log(hegyi)_i + \beta_{4}SPEI_i\times DBH_i + \beta_{5}SPEI_i \times log(hegyi)_i 
+\mu_i = \alpha_{region_i} + \alpha_{treeID} + \beta_{1region_i}SPEI_i + \beta_{2}DBH_i + \beta_{3}BA_i + \beta_{4}SPEI_i\times DBH_i + \beta_{5}SPEI_i \times BA_i 
 $$
 
 and for recovery:
@@ -192,7 +192,7 @@ Recovery_i \sim Normal(\mu_i, \sigma_i)
 $$
 
 $$
-\mu_i = \alpha_{region_i} + \alpha_{treeID} + \beta_{1region_i}Reduction_i + \beta_{2region_i}DBH_i + \beta_{3region_i}log(hegyi)_i + \beta_{4}Reduction_i\times DBH_i + \beta_{5}Reduction_i \times log(hegyi)_i 
+\mu_i = \alpha_{region_i} + \alpha_{treeID} + \beta_{1region_i}Reduction_i + \beta_{2}DBH_i + \beta_{3}BA_i + \beta_{4}Reduction_i\times DBH_i + \beta_{5}Reduction_i \times BA_i 
 $$
 
 ~~Does it make sense for DBH, comp, and interactions to vary regionally? What does this mean?~~ Regionally varying responses to drought intensity or severity could reflect local adaptation. 
