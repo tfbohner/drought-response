@@ -13,8 +13,18 @@ l_leg <- read.csv("Processed Data/legacy_1post.csv") %>%
          recov_score=scores(recovery, type="z"),
          drought_fx=ifelse(dfx_score<=-3, NA, drought_fx),
          simple_comp=ifelse(simple_comp>900, NA, simple_comp),
-         comp=BA) %>% 
+         comp=BA,
+         mean_spei12=mean(spei12, na.rm=T),
+         sd_spei12=sd(spei12, na.rm=T),
+         mean_dfx=mean(drought_fx, na.rm=T),
+         sd_dfx=sd(drought_fx, na.rm=T),
+         mean_dbh=mean(DBH, na.rm=T),
+         sd_dbh=sd(DBH, na.rm=T),
+         mean_comp=mean(comp, na.rm=T),
+         sd_comp=sd(comp, na.rm=T)) %>% 
   left_join(sitechar)
+
+write.csv(l_leg, "Processed Data/legacy_modeling_data.csv")
 
 newdat <- l_leg %>% 
   mutate_at(vars(spei12, drought_fx, DBH, comp), scale)
