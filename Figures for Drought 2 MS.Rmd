@@ -3,8 +3,10 @@ title: "Main and Supplemental Figures and Tables for Drought MS - "
 knit: (function(input_file, encoding) {
   out_dir <- 'docs';
   rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 author: "Teresa Bohner"
-date: "2/14/2020"
+date: "2/25/2020"
 output: 
   html_document:
     toc: true
@@ -841,6 +843,44 @@ dbh_param <- bind_rows(resp_all, recov_all) %>%
 
 ```
 
+```{r q3_manip2}
+
+get_scaled_data <- function(data, spp) {
+  data %>% 
+    mutate_at(vars(spei12, drought_fx, DBH, comp), scale) %>% 
+    filter(Species==spp) %>% 
+    mutate(Region=droplevels(Region))
+}
+
+get_pred_data <- function(data, model) {
+  if(str_detect(deparse(substitute(model)), "resp")) {
+    data %>%
+    group_by(Region) %>% 
+    data_grid(Y, spei12 = seq_range(spei12, n = 10),
+              DBH = c(min(data$DBH), 0, max(data$DBH)),
+              comp = c(min(data$comp), 0, max(data$comp)),
+              tree.uniqueID=1) %>%
+    add_fitted_draws(model, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
+    ungroup() %>% 
+    mutate(DBH=as.factor(round(DBH*data$sd_dbh+data$mean_dbh, digits=2)),
+           comp=as.factor(round(comp*data$sd_comp+data$mean_comp, digits=2)))
+  } else {
+    data %>%
+    group_by(Region) %>% 
+    data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
+              DBH = c(min(data$DBH), 0, max(data$DBH)),
+              comp = c(min(data$comp), 0, max(data$comp)),
+              tree.uniqueID=1) %>%
+    add_fitted_draws(model, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
+    ungroup() %>% 
+    mutate(DBH=as.factor(round(DBH*data$sd_dbh+data$mean_dbh, digits=2)),
+           comp=as.factor(round(comp*data$sd_comp+data$mean_comp, digits=2)))
+  }
+
+}
+
+```
+
 #### Main Figure 
 
 ```{r q3_fig}      
@@ -901,22 +941,6 @@ p2 <- ggplot(filter(dbh_param, response=="recov"), aes(y = param, x = .value, xm
 
 grid.arrange(p1, p2, ncol=1)
 
-# plotter <- function(data){
-#   ggplot(data, aes(y = param, x = value, xmin = .lower, xmax = .upper, color=region)) +
-#   geom_vline(xintercept = 0, linetype="dashed") +
-#   geom_pointintervalh(position = position_dodgev(-0.5)) +
-#   facet_wrap(global~Species, ncol=3, scales="free") +
-#   # facet_grid(~Species) +
-#   theme_test() +
-#   # theme(legend.position = 'none') +
-#   scale_color_manual(values=c("#000000", "#0D0887FF", "#9C179EFF", "#ED7953FF", "#F0F921FF"))+
-#   theme(strip.background = element_blank(), strip.text = element_blank()) +
-#   ylab("") + xlab("") + theme(legend.position="none")
-# }
-# 
-# p1 <- plotter(resp_all)
-# p2 <- plotter(recov_all)
-
 
   
 ```
@@ -926,22 +950,11 @@ Keep in mind that in the scatter plots the drought intensity axis is flipped, so
 
 
 ```{r resp_full ac}
-newdat <- l_leg %>% 
-  mutate_at(vars(spei12, drought_fx, DBH, comp), scale) %>% 
-  filter(Species=="AC")
-test <- newdat %>%
-  group_by(Region) %>% 
-  data_grid(Y, spei12 = seq_range(spei12, n = 10),
-            DBH = c(min(newdat$DBH), 0, max(newdat$DBH)),
-            comp = c(min(newdat$comp), 0, max(newdat$comp)),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(resp_full_ac, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
-  ungroup() %>% 
-  mutate(DBH=as.factor(DBH),
-         comp=as.factor(comp))
+ac_dat <- get_scaled_data(l_leg, "AC")
+ac_pred <- get_pred_data(ac_dat, resp_full_ac)
 
-ggplot(test, aes(x = spei12, y = .value, color = Region)) +
-  geom_point(data=newdat, aes(spei12, drought_fx, color = Region),alpha=0.3) +
+ggplot(ac_pred, aes(x = spei12, y = .value, color = Region)) +
+  geom_point(data=ac_dat, aes(spei12, drought_fx, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
@@ -953,10 +966,9 @@ ggplot(test, aes(x = spei12, y = .value, color = Region)) +
   ylab("Growth Reduction") +
   guides(fill=FALSE)+
   ggtitle("AC regional effects") +
-  scale_x_continuous(labels=function(x) {x*newdat$sd_spei12+(newdat$mean_spei12)}) +
-  scale_x_reverse()
+  scale_x_reverse(labels=function(x) {round(x*unique(ac_dat$sd_spei12)+(unique(ac_dat$mean_spei12)), digits=1)})
 
-ggplot(test, aes(x = spei12, y = .value)) +
+ggplot(ac_pred, aes(x = spei12, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="AC"), aes(spei12, drought_fx),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
@@ -969,11 +981,9 @@ ggplot(test, aes(x = spei12, y = .value)) +
   ylab("Growth Reduction") +
   guides(fill=FALSE)+
   ggtitle("AC Competition") +
-  scale_x_continuous(labels=function(x) {x*newdat$sd_spei12+(newdat$mean_spei12)}) +
-  scale_x_reverse() +
-  guides(color=guide_legend(labels = element_text(c("A", "B", "C"))))
+  scale_x_reverse(labels=function(x) {round(x*unique(ac_dat$sd_spei12)+(unique(ac_dat$mean_spei12)), digits=1)})
 
-ggplot(test, aes(x = spei12, y = .value)) +
+ggplot(ac_pred, aes(x = spei12, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="AC"), aes(spei12, drought_fx),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
@@ -987,30 +997,21 @@ ggplot(test, aes(x = spei12, y = .value)) +
   ylab("Growth Reduction") +
   guides(fill=FALSE)+
   ggtitle("AC DBH") +
-  scale_x_continuous(labels=function(x) {x*newdat$sd_spei12+(newdat$mean_spei12)}) +
-  scale_x_reverse()
+  scale_x_reverse(labels=function(x) {round(x*unique(ac_dat$sd_spei12)+(unique(ac_dat$mean_spei12)), digits=1)})
 
 ```
 
 ```{r resp_full pj}
-test <- filter(l_leg, Species=="PJ") %>%
-  group_by(Region) %>% 
-  data_grid(Y, spei12 = seq_range(spei12, n = 10),
-            DBH = c(10, 90, 180),
-            comp = c(1, 10, 20),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(resp_full_pj, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>%  
-  ungroup() %>% 
-  mutate(DBH=as.factor(DBH),
-         comp=as.factor(comp))
+pj_dat <- get_scaled_data(l_leg, "PJ")
+pj_pred <- get_pred_data(pj_dat, resp_full_pj)
 
-ggplot(test, aes(x = spei12, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="PJ"), aes(spei12, drought_fx, color = Region),alpha=0.3) +
+ggplot(pj_pred, aes(x = spei12, y = .value, color = Region)) +
+  geom_point(data=pj_dat, aes(spei12, drought_fx, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE, option = 'plasma') +
-  scale_x_reverse() +
+  scale_x_reverse(labels=function(x) {round(x*unique(pj_dat$sd_spei12)+(unique(pj_dat$mean_spei12)), digits=1)}) +
   # ylim(-.4, .4) +
   theme_test() +
   xlab("Drought Intensity") +
@@ -1018,13 +1019,13 @@ ggplot(test, aes(x = spei12, y = .value, color = Region)) +
   guides(fill=FALSE)+
   ggtitle("PJ regional effects") 
 
-ggplot(test, aes(x = spei12, y = .value)) +
+ggplot(pj_pred, aes(x = spei12, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PJ"), aes(spei12, drought_fx),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE) +
-  scale_x_reverse() +
+  scale_x_reverse(labels=function(x) {round(x*unique(pj_dat$sd_spei12)+(unique(pj_dat$mean_spei12)), digits=1)}) +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
@@ -1033,13 +1034,13 @@ ggplot(test, aes(x = spei12, y = .value)) +
   guides(fill=FALSE)+
   ggtitle("PJ Competition") 
 
-ggplot(test, aes(x = spei12, y = .value)) +
+ggplot(pj_pred, aes(x = spei12, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PJ"), aes(spei12, drought_fx),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE) +
-  scale_x_reverse() +
+  scale_x_reverse(labels=function(x) {round(x*unique(pj_dat$sd_spei12)+(unique(pj_dat$mean_spei12)), digits=1)}) +
   facet_wrap(vars(Region)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
@@ -1051,24 +1052,16 @@ ggplot(test, aes(x = spei12, y = .value)) +
 ```
 
 ```{r resp_full pl}
-test <- filter(l_leg, Species=="PL") %>%
-  group_by(Region) %>% 
-  data_grid(Y, spei12 = seq_range(spei12, n = 10),
-            DBH = c(10, 90, 180),
-            comp = c(1, 10, 20),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(resp_full_pl, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
-  ungroup() %>% 
-  mutate(DBH=as.factor(DBH),
-         comp=as.factor(comp))
+pl_dat <- get_scaled_data(l_leg, "PL")
+pl_pred <- get_pred_data(pl_dat, resp_full_pl)
 
-ggplot(test, aes(x = spei12, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="PL"), aes(spei12, drought_fx, color = Region),alpha=0.3) +
+ggplot(pl_pred, aes(x = spei12, y = .value, color = Region)) +
+  geom_point(data=pl_dat, aes(spei12, drought_fx, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_manual(values=c("#0D0887FF", "#9C179EFF", "#ED7953FF"))+
-  scale_x_reverse() +
+  scale_x_reverse(labels=function(x) {round(x*unique(pl_dat$sd_spei12)+(unique(pl_dat$mean_spei12)), digits=1)}) +
   # ylim(-.4, .4) +
   theme_test() +
   xlab("Drought Intensity") +
@@ -1076,13 +1069,13 @@ ggplot(test, aes(x = spei12, y = .value, color = Region)) +
   guides(fill=FALSE)+
   ggtitle("PL regional effects") 
 
-ggplot(test, aes(x = spei12, y = .value)) +
+ggplot(pl_pred, aes(x = spei12, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PL"), aes(spei12, drought_fx),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE) +
-  scale_x_reverse() +
+  scale_x_reverse(labels=function(x) {round(x*unique(pl_dat$sd_spei12)+(unique(pl_dat$mean_spei12)), digits=1)}) +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
@@ -1091,13 +1084,13 @@ ggplot(test, aes(x = spei12, y = .value)) +
   guides(fill=FALSE)+
   ggtitle("PL Competition") 
 
-ggplot(test, aes(x = spei12, y = .value)) +
+ggplot(pl_pred, aes(x = spei12, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PL"), aes(spei12, drought_fx),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE) +
-  scale_x_reverse() +
+  scale_x_reverse(labels=function(x) {round(x*unique(pl_dat$sd_spei12)+(unique(pl_dat$mean_spei12)), digits=1)}) +
   facet_wrap(vars(Region)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
@@ -1111,19 +1104,11 @@ ggplot(test, aes(x = spei12, y = .value)) +
 #### Recovery
 
 ```{r recov_full ac}
-test <- filter(l_leg, Species=="AC") %>%
-  group_by(Region) %>% 
-  data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
-            DBH = c(10, 90, 180),
-            comp = c(1, 10, 20),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(recov_full_ac, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
-  ungroup() %>% 
-  mutate(DBH=as.factor(DBH),
-         comp=as.factor(comp))
+ac_dat <- get_scaled_data(l_leg, "AC")
+ac_pred <- get_pred_data(ac_dat, recov_full_ac)
 
-ggplot(test, aes(x = drought_fx, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="AC"), aes(drought_fx, recovery, color = Region),alpha=0.3) +
+ggplot(ac_pred, aes(x = drought_fx, y = .value, color = Region)) +
+  geom_point(data=ac_dat, aes(drought_fx, recovery, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
@@ -1134,9 +1119,10 @@ ggplot(test, aes(x = drought_fx, y = .value, color = Region)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("AC Regional effects") 
+  ggtitle("AC Regional effects") +
+  scale_x_continuous(labels=function(x) {round(x*unique(ac_dat$sd_dfx)+(unique(ac_dat$mean_dfx)), digits=1)})
 
-ggplot(test, aes(x = drought_fx, y = .value)) +
+ggplot(ac_pred, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="AC"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
@@ -1148,9 +1134,10 @@ ggplot(test, aes(x = drought_fx, y = .value)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("AC Competition") 
+  ggtitle("AC Competition") +
+  scale_x_continuous(labels=function(x) {round(x*unique(ac_dat$sd_dfx)+(unique(ac_dat$mean_dfx)), digits=1)})
 
-ggplot(test, aes(x = drought_fx, y = .value)) +
+ggplot(ac_pred, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="AC"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
@@ -1163,23 +1150,16 @@ ggplot(test, aes(x = drought_fx, y = .value)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("AC DBH") 
+  ggtitle("AC DBH") +
+  scale_x_continuous(labels=function(x) {round(x*unique(ac_dat$sd_dfx)+(unique(ac_dat$mean_dfx)), digits=1)})
 ```
 
 ```{r recov_full pj}
-test <- filter(l_leg, Species=="PJ") %>%
-  group_by(Region) %>% 
-  data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
-            DBH = c(10, 90, 180),
-            comp = c(1, 10, 20),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(recov_full_pj, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
-  ungroup() %>% 
-  mutate(DBH=as.factor(DBH),
-         comp=as.factor(comp))
+pj_dat <- get_scaled_data(l_leg, "PJ")
+pj_pred <- get_pred_data(pj_dat, recov_full_pj)
 
-ggplot(test, aes(x = drought_fx, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="PJ"), aes(drought_fx, recovery, color = Region),alpha=0.3) +
+ggplot(pj_pred, aes(x = drought_fx, y = .value, color = Region)) +
+  geom_point(data=pj_dat, aes(drought_fx, recovery, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
@@ -1190,9 +1170,10 @@ ggplot(test, aes(x = drought_fx, y = .value, color = Region)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("PJ Regional effects") 
+  ggtitle("PJ Regional effects") +
+  scale_x_continuous(labels=function(x) {round(x*unique(pj_dat$sd_dfx)+(unique(pj_dat$mean_dfx)), digits=1)})
 
-ggplot(test, aes(x = drought_fx, y = .value)) +
+ggplot(pj_pred, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PJ"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
@@ -1204,9 +1185,10 @@ ggplot(test, aes(x = drought_fx, y = .value)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("PJ Competition") 
+  ggtitle("PJ Competition") +
+  scale_x_continuous(labels=function(x) {round(x*unique(pj_dat$sd_dfx)+(unique(pj_dat$mean_dfx)), digits=1)})
 
-ggplot(test, aes(x = drought_fx, y = .value)) +
+ggplot(pj_pred, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PJ"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
@@ -1219,23 +1201,16 @@ ggplot(test, aes(x = drought_fx, y = .value)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("PJ DBH") 
+  ggtitle("PJ DBH") +
+  scale_x_continuous(labels=function(x) {round(x*unique(pj_dat$sd_dfx)+(unique(pj_dat$mean_dfx)), digits=1)})
 ```
 
 ```{r recov_full pl}
-test <- filter(l_leg, Species=="PL") %>%
-  group_by(Region) %>% 
-  data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
-            DBH = c(10, 90, 180),
-            comp = c(1, 10, 20),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(recov_full_pl, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
-  ungroup() %>% 
-  mutate(DBH=as.factor(DBH),
-         comp=as.factor(comp))
+pl_dat <- get_scaled_data(l_leg, "PL")
+pl_pred <- get_pred_data(pl_dat, recov_full_pl)
 
-ggplot(test, aes(x = drought_fx, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery, color = Region),alpha=0.3) +
+ggplot(pl_pred, aes(x = drought_fx, y = .value, color = Region)) +
+  geom_point(data=pl_dat, aes(drought_fx, recovery, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
   # geom_abline(intercept=0, slope=-0.5) +
@@ -1247,9 +1222,10 @@ ggplot(test, aes(x = drought_fx, y = .value, color = Region)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("PL Regional effects") 
+  ggtitle("PL Regional effects") +
+  scale_x_continuous(labels=function(x) {round(x*unique(pl_dat$sd_dfx)+(unique(pl_dat$mean_dfx)), digits=1)})
 
-ggplot(test, aes(x = drought_fx, y = .value)) +
+ggplot(pl_pred, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
@@ -1261,9 +1237,10 @@ ggplot(test, aes(x = drought_fx, y = .value)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("PL Competition") 
+  ggtitle("PL Competition") +
+  scale_x_continuous(labels=function(x) {round(x*unique(pl_dat$sd_dfx)+(unique(pl_dat$mean_dfx)), digits=1)})
 
-ggplot(test, aes(x = drought_fx, y = .value)) +
+ggplot(pl_pred, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
@@ -1276,7 +1253,8 @@ ggplot(test, aes(x = drought_fx, y = .value)) +
   xlab("Growth Reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
-  ggtitle("PL DBH") 
+  ggtitle("PL DBH") +
+  scale_x_continuous(labels=function(x) {round(x*unique(pl_dat$sd_dfx)+(unique(pl_dat$mean_dfx)), digits=1)}) 
 ```
 
 ```{r alltogether models, eval=F}
