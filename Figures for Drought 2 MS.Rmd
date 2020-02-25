@@ -3,8 +3,6 @@ title: "Main and Supplemental Figures and Tables for Drought MS - "
 knit: (function(input_file, encoding) {
   out_dir <- 'docs';
   rmarkdown::render(input_file,
- encoding=encoding,
- output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 author: "Teresa Bohner"
 date: "2/14/2020"
 output: 
@@ -13,6 +11,8 @@ output:
     collapsed: false
     toc_float: true
     toc_depth: 4
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -40,14 +40,19 @@ library(outliers)
 ```{r data, include=F}
 sitechar <- read.csv("Raw Data/site characteristic table.csv")
 
-l_leg <- read.csv("Processed Data/legacy_1post.csv") %>% 
+# l_leg <- read.csv("Processed Data/legacy_1post.csv") %>% 
+#   left_join(sitechar) %>% 
+#   group_by(Species) %>%
+#   mutate(log_hegyi=log(hegyi),
+#          dfx_score=scores(drought_fx, type="z"),
+#          recov_score=scores(recovery, type="z"),
+#          drought_fx=ifelse(dfx_score<=-3, NA, drought_fx),
+#          Region=factor(Region, levels=c("San Jac", "SENF", "SEKI", "Mammoth")))
+
+l_leg <- read.csv("Processed Data/legacy_modeling_data.csv") %>% 
   left_join(sitechar) %>% 
   group_by(Species) %>%
-  mutate(log_hegyi=log(hegyi),
-         dfx_score=scores(drought_fx, type="z"),
-         recov_score=scores(recovery, type="z"),
-         drought_fx=ifelse(dfx_score<=-3, NA, drought_fx),
-         Region=factor(Region, levels=c("San Jac", "SENF", "SEKI", "Mammoth")))
+  mutate(Region=factor(Region, levels=c("San Jac", "SENF", "SEKI", "Mammoth")))
   
 ```
 
@@ -761,13 +766,13 @@ grid.arrange(p1, p2, p3, p4, p5, p6, ncol=3)
 
 ### Q3
 ```{r q3_load}
-resp_full_ac <- readRDS("Brms models/final rr models/resp_full_ac.rds")
-resp_full_pj <- readRDS("Brms models/final rr models/resp_full_pj.rds")
-resp_full_pl <- readRDS("Brms models/final rr models/resp_full_pl.rds")
+resp_full_ac <- readRDS("Brms models/final rr models/resp_full_ac_scaled.rds")
+resp_full_pj <- readRDS("Brms models/final rr models/resp_full_pj_scaled.rds")
+resp_full_pl <- readRDS("Brms models/final rr models/resp_full_pl_scaled.rds")
 
-recov_full_ac <- readRDS("Brms models/final rr models/recov_full_ac.rds")
-recov_full_pj <- readRDS("Brms models/final rr models/recov_full_pj.rds")
-recov_full_pl <- readRDS("Brms models/final rr models/recov_full_pl.rds")
+recov_full_ac <- readRDS("Brms models/final rr models/recov_full_ac_scaled.rds")
+recov_full_pj <- readRDS("Brms models/final rr models/recov_full_pj_scaled.rds")
+recov_full_pl <- readRDS("Brms models/final rr models/recov_full_pl_scaled.rds")
 ```
 
 
@@ -921,11 +926,14 @@ Keep in mind that in the scatter plots the drought intensity axis is flipped, so
 
 
 ```{r resp_full ac}
-test <- filter(l_leg, Species=="AC") %>%
+newdat <- l_leg %>% 
+  mutate_at(vars(spei12, drought_fx, DBH, comp), scale) %>% 
+  filter(Species=="AC")
+test <- newdat %>%
   group_by(Region) %>% 
   data_grid(Y, spei12 = seq_range(spei12, n = 10),
-            DBH = c(10, 90, 180),
-            comp = c(1, 10, 20),
+            DBH = c(min(newdat$DBH), 0, max(newdat$DBH)),
+            comp = c(min(newdat$comp), 0, max(newdat$comp)),
             tree.uniqueID=1) %>%
   add_fitted_draws(resp_full_ac, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
   ungroup() %>% 
@@ -933,18 +941,20 @@ test <- filter(l_leg, Species=="AC") %>%
          comp=as.factor(comp))
 
 ggplot(test, aes(x = spei12, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="AC"), aes(spei12, drought_fx, color = Region),alpha=0.3) +
+  geom_point(data=newdat, aes(spei12, drought_fx, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE, option = 'plasma') +
-  scale_x_reverse() +
+  # scale_x_reverse() +
   # ylim(-.4, .4) +
   theme_test() +
   xlab("Drought Intensity") +
   ylab("Growth Reduction") +
   guides(fill=FALSE)+
-  ggtitle("AC regional effects") 
+  ggtitle("AC regional effects") +
+  scale_x_continuous(labels=function(x) {x*newdat$sd_spei12+(newdat$mean_spei12)}) +
+  scale_x_reverse()
 
 ggplot(test, aes(x = spei12, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="AC"), aes(spei12, drought_fx),alpha=0.3) +
@@ -952,14 +962,16 @@ ggplot(test, aes(x = spei12, y = .value)) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE) +
-  scale_x_reverse() +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
   xlab("Drought Intensity") +
   ylab("Growth Reduction") +
   guides(fill=FALSE)+
-  ggtitle("AC Competition") 
+  ggtitle("AC Competition") +
+  scale_x_continuous(labels=function(x) {x*newdat$sd_spei12+(newdat$mean_spei12)}) +
+  scale_x_reverse() +
+  guides(color=guide_legend(labels = element_text(c("A", "B", "C"))))
 
 ggplot(test, aes(x = spei12, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="AC"), aes(spei12, drought_fx),alpha=0.3) +
@@ -967,7 +979,6 @@ ggplot(test, aes(x = spei12, y = .value)) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE) +
-  scale_x_reverse() +
   facet_wrap(vars(Region)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
@@ -975,7 +986,9 @@ ggplot(test, aes(x = spei12, y = .value)) +
   xlab("Drought Intensity") +
   ylab("Growth Reduction") +
   guides(fill=FALSE)+
-  ggtitle("AC DBH") 
+  ggtitle("AC DBH") +
+  scale_x_continuous(labels=function(x) {x*newdat$sd_spei12+(newdat$mean_spei12)}) +
+  scale_x_reverse()
 
 ```
 
