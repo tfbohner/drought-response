@@ -14,21 +14,24 @@ l_leg <- read.csv("Processed Data/legacy_1post.csv") %>%
          drought_fx=ifelse(dfx_score<=-3, NA, drought_fx),
          simple_comp=ifelse(simple_comp>900, NA, simple_comp),
          comp=BA,
-         mean_spei12=mean(spei12, na.rm=T),
-         sd_spei12=sd(spei12, na.rm=T),
-         mean_dfx=mean(drought_fx, na.rm=T),
-         sd_dfx=sd(drought_fx, na.rm=T),
-         mean_dbh=mean(DBH, na.rm=T),
-         sd_dbh=sd(DBH, na.rm=T),
-         mean_comp=mean(comp, na.rm=T),
-         sd_comp=sd(comp, na.rm=T)) %>% 
+         mean_spei12=round(mean(spei12, na.rm=T), digits = 3),
+         sd_spei12=round(sd(spei12, na.rm=T), digits = 3),
+         mean_dfx=round(mean(drought_fx, na.rm=T), digits = 3),
+         sd_dfx=round(sd(drought_fx, na.rm=T), digits = 3),
+         mean_dbh=round(mean(DBH, na.rm=T), digits = 3),
+         sd_dbh=round(sd(DBH, na.rm=T), digits = 3),
+         mean_comp=round(mean(comp, na.rm=T), digits = 3),
+         sd_comp=round(sd(comp, na.rm=T), digits = 3)) %>% 
   left_join(sitechar)
 
 write.csv(l_leg, "Processed Data/legacy_modeling_data.csv")
 
 newdat <- l_leg %>% 
-  mutate_at(vars(spei12, drought_fx, DBH, comp), scale)
+  mutate_at(vars(spei12, drought_fx, DBH, comp), scale) %>% 
+  mutate(spei_raw=spei12*sd_spei12+mean_spei12)
 
+
+plot(l_leg$spei12, newdat$spei_raw)
 
 
 summary <- group_by(l_leg, tree.uniqueID) %>% 
