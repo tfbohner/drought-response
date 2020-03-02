@@ -587,11 +587,16 @@ dfx_yearly <- dfx_data %>%
          reduction=ifelse(diff>0, "yes", "no"),
          drought_fx=(avg_growth-spline_growth)/avg_growth, #fss_growth
          post1_fx=(avg_growth-post1)/avg_growth,
-         post2_fx=(avg_growth-post2)/avg_growth) %>% 
+         post2_fx=(avg_growth-post2)/avg_growth)
+
+dfx_allyears <- dfx_yearly 
+
+dfx_yearly <- dfx_yearly %>% 
   filter(droughtyear=="yes")
 
 write.csv(dfx_summary, "Processed Data/dfx_summary.csv")
 write.csv(dfx_yearly, "Processed Data/dfx_yearly.csv")
+write.csv(dfx_allyears, "Processed Data/dfx_allyears.csv")
 
 ```
 

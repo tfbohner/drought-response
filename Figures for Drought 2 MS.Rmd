@@ -182,7 +182,6 @@ plot_grid(
     drought, ncol=2, rel_widths = c(.30, .6)),
   legend, ncol=1, rel_heights = c(1, 0.05))
 
-drought
 
 
 ```
