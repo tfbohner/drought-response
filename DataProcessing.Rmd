@@ -725,15 +725,8 @@ l_leg2 <- dplyr::select(legacy, c(tree.uniqueID, Year, spei_post1, spei_post2, Y
   mutate(dummy=ifelse(dummy=="spei", "spei_post", "year_post")) %>% 
   pivot_wider(names_from="dummy", values_from="value") %>% 
   left_join(l_leg) %>% 
-  group_by(event) %>% 
-  mutate(scaled_leg=(legacy_mean-min(legacy_mean, na.rm=T))/(max(legacy_mean, na.rm=T)-min(legacy_mean, na.rm=T)),
-         scaled_dfx=(drought_fx-min(drought_fx, na.rm=T))/(max(drought_fx, na.rm=T)-min(drought_fx, na.rm=T)),
-         scaled_spei=(1-(spei12-min(spei12, na.rm=T))/(max(spei12, na.rm=T)-min(spei12, na.rm=T))),
-         scaled_spei=ifelse(scaled_spei==0, 0.0001, scaled_spei),
-         Region1 =ifelse(Region=="San Jac", "lat1", ifelse(Region=="SENF", "lat2", ifelse(Region=="SEKI", "lat3", "lat4")))) %>% 
   ungroup() %>% 
-  mutate(rel_dfx=scaled_dfx/scaled_spei,
-         rel_leg=scaled_leg/scaled_dfx,
+  mutate(Region1 =ifelse(Region=="San Jac", "lat1", ifelse(Region=="SENF", "lat2", ifelse(Region=="SEKI", "lat3", "lat4"))),
          recovery=legacy_mean)
 
 l_leg1 <- filter(l_leg2, event=="post1")
