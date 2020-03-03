@@ -134,7 +134,8 @@ map <- ggmap(myMap) +
   labs(x = 'Longitude', y = 'Latitude') +
   theme_test() +
   labs(color="Latitude") +
-  theme(panel.background = element_rect(fill = "lightblue")) +
+  theme(panel.background = element_rect(fill = "lightblue"), axis.title=element_blank(),
+        axis.text=element_blank(), axis.ticks = element_blank()) +
   theme(legend.position = 'none') 
 
 
@@ -178,6 +179,10 @@ legend <- cowplot::get_legend(dummy)
 
 p2 <- ggdraw() + draw_image("images/drought measurements new.svg") 
 
+mapgrob <- as_grob(map)
+
+bivar <- bivar + annotation_custom(grob=mapgrob, ymin = 800, ymax = 1150, xmin = 4.4, xmax = 7.3)
+
 plot_grid(
   plot_grid(
     plot_grid(p2, bivar, ncol=1, labels = c('a)', 'b)')), 
@@ -211,7 +216,7 @@ $$
 \mu_i = \alpha_{region_i} + \alpha_{treeID} + \beta_{1region_i}Reduction_i + \beta_{2}DBH_i + \beta_{3}BA_i + \beta_{4}Reduction_i\times DBH_i + \beta_{5}Reduction_i \times BA_i 
 $$
 
-~~Does it make sense for DBH, comp, and interactions to vary regionally? What does this mean?~~ Regionally varying responses to drought intensity or severity could reflect local adaptation. 
+Regionally varying responses to drought intensity or severity could reflect local adaptation. 
 
 ### Descriptions of interaction terms
 
@@ -219,17 +224,13 @@ $SPEI \times DBH$ smaller or larger trees experience the same drought intensity 
 
 $Reduction \times DBH$ smaller or larger trees recover from equally damaging droughts differently. Potentially due to access to resources, allocation again.
 
-$SPEI \times log(hegyi)$ sparse or dense neighborhoods modify the effect of drought intensity. This could be via resource (water) competition. Although because we lack good characterization of the between neighborhood microsite differences density could reflect suitability more than competition.
+$SPEI \times BA$ sparse or dense neighborhoods modify the effect of drought intensity. This could be via resource (water) competition. Although because we lack good characterization of the between neighborhood microsite differences density could reflect suitability more than competition.
 
-$Reduction \times log(hegyi)$ sparse or dense neighborhoods modify the recovery of trees from equally damaging droughts. This could also be via resource competition although more than just water. Again, patterns may reflect uncharacterized microsite differences rather than competition.
+$Reduction \times BA$ sparse or dense neighborhoods modify the recovery of trees from equally damaging droughts. This could also be via resource competition although more than just water. Again, patterns may reflect uncharacterized microsite differences rather than competition.
 
 ### Details
-All models converged Rhat ~1 and each model had few divergent samples. Param estimates and plots were prepared with tidybayes. Marginal effects plots were produced with `add_fitted_draws()` setting `re_formula = ~(spei12 + DBH + comp | Region))` excluding `(1 | tree.uniqueID)`.
+All models converged Rhat ~1 and each model had few divergent samples. Param estimates and plots were prepared with tidybayes. Marginal effects plots were produced with `add_fitted_draws()` .
 
-
-```{r rfx}
-rfx <- ~(spei12 | Region)
-```
 
 ## Results
 ### Q1 Species differences
@@ -319,7 +320,7 @@ kable(temp, "html", caption="Table SX. Recovery slope contrasts")
 
 ```
 
-#### Main Figure
+
 ```{r q1_manip}
 resp_param <- resp3 %>% 
   spread_draws(b_Intercept, b_SpeciesPJ, b_SpeciesPL, b_spei12, b_sigma_Intercept, b_sigma_SpeciesPJ, b_sigma_SpeciesPL) %>% 
@@ -356,6 +357,8 @@ recov_param <- recov4 %>%
   median_qi(.width = c(.95, .66))
 ```
 
+#### Param Plots
+
 ```{r q1_fig}
 p1 <- ggplot(resp_param, aes(y = param, x = value, xmin = .lower, xmax = .upper, color=Species)) +
   geom_vline(xintercept = 0, linetype="dashed") +
@@ -384,7 +387,10 @@ dummy <- ggplot(l_leg, aes(x = drought_fx, y = recovery, color = Species)) +
 legend <- cowplot::get_legend(dummy)
 
 plot_grid(plot_grid(p1, p2, cols=1), legend, ncol=2, rel_widths = c(1, 0.2))
+```
 
+#### Main Figure
+```{r q1_mainfig}
 p1 <- l_leg %>%
   group_by(Species) %>%
   data_grid(spei12 = seq_range(spei12, n = 10),
@@ -540,8 +546,6 @@ kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL
 
 ```
 
-#### Main Figure
-
 ```{r q2_manip}
 manip <- function(mod, vars, spp){
 mod %>%
@@ -605,7 +609,7 @@ recov_cont <- bind_rows(mutate(cont_ac, Species="AC"),
 
 ```
 
-
+#### Param Plots
 ```{r q2_fig}
 abc <- c(AC="a)", PJ="b)", PL="c)")
 def <- c(AC="d)", PJ="e)", PL="f)")
@@ -649,6 +653,8 @@ ggplot(recov_cont, aes(x=region_mean, y=region, color=signif)) +
   theme_test() +
   scale_color_grey(start=0.8, end=0)
 ```
+
+#### Main Figure
 
 ```{r q2_scatter}
 p1 <- filter(l_leg, Species=="AC") %>%
@@ -890,7 +896,7 @@ get_pred_data <- function(data, model) {
 
 ```
 
-#### Main Figure 
+#### Param Plots
 
 ```{r q3_fig}      
 ggplot(resp_all, aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=region)) +
@@ -954,13 +960,86 @@ grid.arrange(p1, p2, ncol=1)
   
 ```
 
+#### Main Figure
+
+```{r pred_dat}
+ac_dat <- get_scaled_data(l_leg, "AC")
+pj_dat <- get_scaled_data(l_leg, "PJ")
+pl_dat <- get_scaled_data(l_leg, "PL")
+
+ac_pred <- get_pred_data(ac_dat, resp_full_ac)
+pj_pred <- get_pred_data(pj_dat, resp_full_pj)
+pl_pred <- get_pred_data(pl_dat, resp_full_pl)
+
+senf_resp <- bind_rows(mutate(ac_pred, Species="ac"),
+                       mutate(pj_pred, Species="pj"),
+                       mutate(pl_pred, Species="pl")) %>% 
+  filter(Region=="SENF") %>% 
+  mutate(response="Growth Reduction",
+         DBH=as.numeric(DBH),
+         comp=as.numeric(comp),
+         xvar=spei12) %>% 
+  group_by(Species) %>% 
+  mutate(dbh2=factor(DBH, labels=c("small", "med", "large")), 
+         comp2=factor(comp, labels=c("low", "med", "high")))
+
+
+ac_pred2 <- get_pred_data(ac_dat, recov_full_ac)
+pj_pred2 <- get_pred_data(pj_dat, recov_full_pj)
+pl_pred2 <- get_pred_data(pl_dat, recov_full_pl)
+
+senf_recov <- bind_rows(mutate(ac_pred2, Species="ac"),
+                       mutate(pj_pred2, Species="pj"),
+                       mutate(pl_pred2, Species="pl")) %>% 
+  filter(Region=="SENF") %>% 
+  mutate(response="Recovery",
+         DBH=as.numeric(DBH),
+         comp=as.numeric(comp),
+         xvar=drought_fx) %>% 
+  group_by(Species) %>% 
+  mutate(dbh2=factor(DBH, labels=c("small", "med", "large")), 
+         comp2=factor(comp, labels=c("low", "med", "high")))
+
+
+senf_all <- bind_rows(senf_resp, senf_recov)
+
+ggplot(senf_all, aes(x = xvar, y = .value)) +
+  # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
+  stat_lineribbon(aes(y = .value, color=dbh2), .width = c(.95), alpha = 0.4) +
+  stat_lineribbon(aes(y = .value, color=dbh2), .width = .01) +
+  scale_fill_brewer(palette = "Greys") +
+  scale_color_viridis(discrete=TRUE,) +
+  facet_grid(response~Species) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  # ylim(-.4, .4) +
+  theme_test() +
+  xlab("Scaled predictor") +
+  ylab("Response variable") +
+  guides(fill=FALSE) +
+  ggtitle("Size effects at SENF")
+
+ggplot(senf_all, aes(x = xvar, y = .value)) +
+  # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
+  stat_lineribbon(aes(y = .value, color=comp2), .width = c(.95), alpha = 0.4) +
+  stat_lineribbon(aes(y = .value, color=comp2), .width = .01) +
+  scale_fill_brewer(palette = "Greys") +
+  scale_color_viridis(discrete=TRUE,) +
+  facet_grid(response~Species) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  # ylim(-.4, .4) +
+  theme_test() +
+  xlab("Scaled predictor") +
+  ylab("Response variable") +
+  guides(fill=FALSE)+
+  ggtitle("Competition effects at SENF")
+
+```
+
 #### Growth Reduction
 Keep in mind that in the scatter plots the drought intensity axis is flipped, so slope will appear to be wrong sign from the parameter estimate plots.
 
 
 ```{r resp_full ac}
-ac_dat <- get_scaled_data(l_leg, "AC")
-ac_pred <- get_pred_data(ac_dat, resp_full_ac)
 
 ggplot(ac_pred, aes(x = spei12, y = .value, color = Region)) +
   geom_point(data=ac_dat, aes(spei12, drought_fx, color = Region),alpha=0.3) +
@@ -1011,8 +1090,6 @@ ggplot(ac_pred, aes(x = spei12, y = .value)) +
 ```
 
 ```{r resp_full pj}
-pj_dat <- get_scaled_data(l_leg, "PJ")
-pj_pred <- get_pred_data(pj_dat, resp_full_pj)
 
 ggplot(pj_pred, aes(x = spei12, y = .value, color = Region)) +
   geom_point(data=pj_dat, aes(spei12, drought_fx, color = Region),alpha=0.3) +
@@ -1061,8 +1138,6 @@ ggplot(pj_pred, aes(x = spei12, y = .value)) +
 ```
 
 ```{r resp_full pl}
-pl_dat <- get_scaled_data(l_leg, "PL")
-pl_pred <- get_pred_data(pl_dat, resp_full_pl)
 
 ggplot(pl_pred, aes(x = spei12, y = .value, color = Region)) +
   geom_point(data=pl_dat, aes(spei12, drought_fx, color = Region),alpha=0.3) +
@@ -1110,13 +1185,14 @@ ggplot(pl_pred, aes(x = spei12, y = .value)) +
   ggtitle("PL DBH") 
 ```
 
+
+
 #### Recovery
 
-```{r recov_full ac}
-ac_dat <- get_scaled_data(l_leg, "AC")
-ac_pred <- get_pred_data(ac_dat, recov_full_ac)
 
-ggplot(ac_pred, aes(x = drought_fx, y = .value, color = Region)) +
+```{r recov_full ac}
+
+ggplot(ac_pred2, aes(x = drought_fx, y = .value, color = Region)) +
   geom_point(data=ac_dat, aes(drought_fx, recovery, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
@@ -1131,7 +1207,7 @@ ggplot(ac_pred, aes(x = drought_fx, y = .value, color = Region)) +
   ggtitle("AC Regional effects") +
   scale_x_continuous(labels=function(x) {round(x*unique(ac_dat$sd_dfx)+(unique(ac_dat$mean_dfx)), digits=1)})
 
-ggplot(ac_pred, aes(x = drought_fx, y = .value)) +
+ggplot(ac_pred2, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="AC"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
@@ -1146,7 +1222,7 @@ ggplot(ac_pred, aes(x = drought_fx, y = .value)) +
   ggtitle("AC Competition") +
   scale_x_continuous(labels=function(x) {round(x*unique(ac_dat$sd_dfx)+(unique(ac_dat$mean_dfx)), digits=1)})
 
-ggplot(ac_pred, aes(x = drought_fx, y = .value)) +
+ggplot(ac_pred2, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="AC"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
@@ -1164,10 +1240,7 @@ ggplot(ac_pred, aes(x = drought_fx, y = .value)) +
 ```
 
 ```{r recov_full pj}
-pj_dat <- get_scaled_data(l_leg, "PJ")
-pj_pred <- get_pred_data(pj_dat, recov_full_pj)
-
-ggplot(pj_pred, aes(x = drought_fx, y = .value, color = Region)) +
+ggplot(pj_pred2, aes(x = drought_fx, y = .value, color = Region)) +
   geom_point(data=pj_dat, aes(drought_fx, recovery, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
@@ -1182,7 +1255,7 @@ ggplot(pj_pred, aes(x = drought_fx, y = .value, color = Region)) +
   ggtitle("PJ Regional effects") +
   scale_x_continuous(labels=function(x) {round(x*unique(pj_dat$sd_dfx)+(unique(pj_dat$mean_dfx)), digits=1)})
 
-ggplot(pj_pred, aes(x = drought_fx, y = .value)) +
+ggplot(pj_pred2, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PJ"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
@@ -1197,7 +1270,7 @@ ggplot(pj_pred, aes(x = drought_fx, y = .value)) +
   ggtitle("PJ Competition") +
   scale_x_continuous(labels=function(x) {round(x*unique(pj_dat$sd_dfx)+(unique(pj_dat$mean_dfx)), digits=1)})
 
-ggplot(pj_pred, aes(x = drought_fx, y = .value)) +
+ggplot(pj_pred2, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PJ"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
@@ -1215,10 +1288,8 @@ ggplot(pj_pred, aes(x = drought_fx, y = .value)) +
 ```
 
 ```{r recov_full pl}
-pl_dat <- get_scaled_data(l_leg, "PL")
-pl_pred <- get_pred_data(pl_dat, recov_full_pl)
 
-ggplot(pl_pred, aes(x = drought_fx, y = .value, color = Region)) +
+ggplot(pl_pred2, aes(x = drought_fx, y = .value, color = Region)) +
   geom_point(data=pl_dat, aes(drought_fx, recovery, color = Region),alpha=0.3) +
   stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value), .width = .01) +
@@ -1234,7 +1305,7 @@ ggplot(pl_pred, aes(x = drought_fx, y = .value, color = Region)) +
   ggtitle("PL Regional effects") +
   scale_x_continuous(labels=function(x) {round(x*unique(pl_dat$sd_dfx)+(unique(pl_dat$mean_dfx)), digits=1)})
 
-ggplot(pl_pred, aes(x = drought_fx, y = .value)) +
+ggplot(pl_pred2, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp), .width = .01) +
@@ -1249,7 +1320,7 @@ ggplot(pl_pred, aes(x = drought_fx, y = .value)) +
   ggtitle("PL Competition") +
   scale_x_continuous(labels=function(x) {round(x*unique(pl_dat$sd_dfx)+(unique(pl_dat$mean_dfx)), digits=1)})
 
-ggplot(pl_pred, aes(x = drought_fx, y = .value)) +
+ggplot(pl_pred2, aes(x = drought_fx, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=DBH), .width = .01) +
@@ -1265,6 +1336,7 @@ ggplot(pl_pred, aes(x = drought_fx, y = .value)) +
   ggtitle("PL DBH") +
   scale_x_continuous(labels=function(x) {round(x*unique(pl_dat$sd_dfx)+(unique(pl_dat$mean_dfx)), digits=1)}) 
 ```
+
 
 ```{r alltogether models, eval=F}
 resp_full %>%
@@ -1335,5 +1407,4 @@ recov_full %>%
   theme_test() +
   scale_color_viridis(discrete=T, option="plasma")
 ```
-
 
