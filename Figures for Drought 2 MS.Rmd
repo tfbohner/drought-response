@@ -135,18 +135,17 @@ map <- ggmap(myMap) +
   theme_test() +
   labs(color="Latitude") +
   theme(panel.background = element_rect(fill = "lightblue")) +
-  theme(legend.position = 'none') +
-  ggtitle("a)")
+  theme(legend.position = 'none') 
 
 
 bivar <- ggplot(site_clim, aes(avg_temp, avg_ppt, color=Region)) +
-  geom_point() +
+  geom_point(size=2) +
   scale_color_viridis(option='plasma', discrete=T, direction = -1) +
   theme_test() +
   xlab("mean temperature (C)") +
   ylab("mean precipitation (mm)") +
   theme(legend.position = 'none') +
-  ggtitle("b)")
+  ggtitle("")
 
 
 drought <- ggplot(reg_clim, aes(Year, spei12, color=Region)) +
@@ -164,7 +163,7 @@ drought <- ggplot(reg_clim, aes(Year, spei12, color=Region)) +
   theme(legend.position = 'none') +
   theme(strip.background = element_blank(), strip.text=element_blank(), axis.title.x=element_blank()) +
   theme(panel.spacing = unit(0, "lines")) +
-  ggtitle("c)")
+  ggtitle("")
 
 
 dummy <- ggplot(avg_clim, aes(Region, avg_ppt, color=Region)) +
@@ -176,10 +175,13 @@ dummy <- ggplot(avg_clim, aes(Region, avg_ppt, color=Region)) +
 
 legend <- cowplot::get_legend(dummy)
 
+
+p2 <- ggdraw() + draw_image("images/drought measurements new.svg") 
+
 plot_grid(
   plot_grid(
-    plot_grid(map, bivar, ncol=1), 
-    drought, ncol=2, rel_widths = c(.30, .6)),
+    plot_grid(p2, bivar, ncol=1, labels = c('a)', 'b)')), 
+    drought, ncol=2, rel_widths = c(.30, .6), labels=c('a)', 'c)')),
   legend, ncol=1, rel_heights = c(1, 0.05))
 
 
