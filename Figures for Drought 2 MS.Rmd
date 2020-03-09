@@ -121,7 +121,7 @@ site_clim <- avg_clim %>%
 
 ```{r map, echo=F, message=F}
 
-myLocation <- c(-128, 30, -112, 45)
+myLocation <- c(-129, 30, -112, 45)
 
 myLocation <- "Sequoia National Monument"
 
@@ -134,10 +134,19 @@ map <- ggmap(myMap) +
   labs(x = 'Longitude', y = 'Latitude') +
   theme_test() +
   labs(color="Latitude") +
-  theme(panel.background = element_rect(fill = "lightblue"), axis.title=element_blank(),
+  theme(legend.position = 'none') +
+  ggtitle("")
+
+map2 <- ggplot() +
+  geom_polygon(data=states.f, aes(long,lat, group=group),color="black", fill="white") +
+  geom_point(data=sites, aes(X, Y, color=Y)) +
+  scale_color_viridis(option='plasma') +
+  theme_test() +
+  ylab("Latitude") + xlab("Longitude") +
+  labs(color="Latitude") +
+  theme(panel.background = element_rect(fill = "gray"), axis.title=element_blank(),
         axis.text=element_blank(), axis.ticks = element_blank()) +
   theme(legend.position = 'none') 
-
 
 bivar <- ggplot(site_clim, aes(avg_temp, avg_ppt, color=Region)) +
   geom_point(size=2) +
@@ -178,16 +187,21 @@ legend <- cowplot::get_legend(dummy)
 
 
 p2 <- ggdraw() + draw_image("images/drought measurements new.svg") 
+p2
 
-mapgrob <- as_grob(map)
+mapgrob <- as_grob(map2)
 
-bivar <- bivar + annotation_custom(grob=mapgrob, ymin = 800, ymax = 1150, xmin = 4.4, xmax = 7.3)
+bivar2 <- bivar + annotation_custom(grob=mapgrob, ymin = 890, ymax = 1122, xmin = 4.4, xmax = 7.4)
 
 plot_grid(
   plot_grid(
-    plot_grid(p2, bivar, ncol=1, labels = c('a)', 'b)')), 
-    drought, ncol=2, rel_widths = c(.30, .6), labels=c('a)', 'c)')),
+    plot_grid(p2, map2, bivar, ncol=1, labels = c('a)', 'b)', 'c)'), rel_heights = c(0.6, 1, 1), align = "v", scale=c(1.08, 0.9, 0.9)),
+    drought, ncol=2, rel_widths = c(.30, .7), labels=c('', 'd)')),
   legend, ncol=1, rel_heights = c(1, 0.05))
+
+
+# plot_grid(plot_grid(p2, drought, ncol=1, rel_heights=c(0.3, 0.7), c("a)", "c)")),
+#           plot_grid(map, bivar, ncol=1, rel_heights=c(1, 1)), nrow=1, rel_widths=c(0.6, 0.4), labels=c("b)", "d)"))
 
 
 
@@ -390,7 +404,7 @@ plot_grid(plot_grid(p1, p2, cols=1), legend, ncol=2, rel_widths = c(1, 0.2))
 ```
 
 #### Main Figure
-```{r q1_mainfig}
+```{r q1_mainfig, out.width="70%"}
 p1 <- l_leg %>%
   group_by(Species) %>%
   data_grid(spei12 = seq_range(spei12, n = 10),
