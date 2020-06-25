@@ -1,0 +1,80 @@
+---
+title: "Hierarchical model descriptions for drought ms"
+author: "Teresa Bohner"
+date: "6/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+$$
+Growth\sim Normal(\mu_i,\sigma) 
+$$
+
+$$
+\mu_i= \alpha + \alpha_{Site:Nb_i} + \alpha_{TreeID_i} + 
+\beta1_{Site:Nb_i}\times SPEI +
+\beta2_{Site:Nb_i}\times Species +
+\beta3_{Site:Nb_i}\times SPEI:SPEI
+$$
+
+$$
+\left[\begin{array}\\
+\alpha_{Site:Nb}\\
+\beta1_{Site:Nb}\\
+\beta2_{Site:Nb}\\
+\beta3_{Site:Nb}
+\end{array}\right] 
+=
+MVNormal\left(\left[\begin{array}\\
+0\\
+0\\
+0\\
+0
+\end{array}\right], \mathbf{S} \right)
+$$
+$$
+\mathbf{S}=\left(\begin{array}\\
+\sigma^2_{\alpha_{Site:Nb}}&
+\sigma_{\alpha_{Site:Nb}}\sigma_{\beta1_{Site:Nb}}\rho&
+\sigma_{\alpha_{Site:Nb}}\sigma_{\beta2_{Site:Nb}}\rho&
+\sigma_{\alpha_{Site:Nb}}\sigma_{\beta3_{Site:Nb}}\rho
+\\
+\sigma_{\alpha_{Site:Nb}}\sigma_{\beta1_{Site:Nb}}\rho&
+\sigma^2_{\beta1_{Site:Nb}}&
+\sigma_{\beta1_{Site:Nb}}\sigma_{\beta2_{Site:Nb}}\rho&
+\sigma_{\beta1_{Site:Nb}}\sigma_{\beta3_{Site:Nb}}\rho
+\\
+\sigma_{\alpha_{Site:Nb}}\sigma_{\beta2_{Site:Nb}}\rho&
+\sigma_{\beta1_{Site:Nb}}\sigma_{\beta2_{Site:Nb}}\rho&
+\sigma^2_{\beta2_{Site:Nb}}&
+\sigma_{\beta2_{Site:Nb}}\sigma_{\beta3_{Site:Nb}}\rho
+\\
+\sigma_{\alpha_{Site:Nb}}\sigma_{\beta3_{Site:Nb}}\rho&
+\sigma_{\beta1_{Site:Nb}}\sigma_{\beta3_{Site:Nb}}\rho&
+\sigma_{\beta2_{Site:Nb}}\sigma_{\beta3_{Site:Nb}}\rho&
+\sigma^2_{\beta3_{Site:Nb}}
+\end{array} \right)
+$$
+
+$$
+\alpha_{TreeID} \sim Normal(0, \sigma_{TreeID})
+\\
+\alpha \sim StudentT(3, 1, 10)
+\\
+\sigma \sim HalfStudentT(3, 1, 10)
+\\
+\sigma_{TreeID} \sim HalfStudentT(3, 1, 10)
+\\
+\sigma_{\alpha_{Site:Nb}} \sim HalfStudentT(3, 1, 10)
+\\
+\sigma_{\beta1_{Site:Nb}} \sim HalfStudentT(3, 1, 10)
+\\
+\sigma_{\beta2_{Site:Nb}} \sim HalfStudentT(3, 1, 10)
+\\
+\sigma_{\beta3_{Site:Nb}} \sim HalfStudentT(3, 1, 10)
+\\
+\mathbf{R} \sim LJKcorr(1)
+$$

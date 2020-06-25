@@ -12,7 +12,6 @@ l_leg <- read.csv("Processed Data/legacy_1post.csv") %>%
          dfx_score=scores(drought_fx, type="z"),
          recov_score=scores(recovery, type="z"),
          drought_fx=ifelse(dfx_score<=-3, NA, drought_fx),
-         simple_comp=ifelse(simple_comp>900, NA, simple_comp),
          comp=BA,
          mean_spei12=round(mean(spei12, na.rm=T), digits = 3),
          sd_spei12=round(sd(spei12, na.rm=T), digits = 3),
@@ -37,17 +36,18 @@ plot(l_leg$spei12, newdat$spei_raw)
 summary <- group_by(l_leg, tree.uniqueID) %>% 
   summarize(n_events=length(drought_fx))
 
-# for(i in 1:9){
-#   assign(paste("resp", i, sep=""), readRDS(paste("Brms models/final rr models/resp", i, ".rds", sep="")), envir = .GlobalEnv)
-# }
+for(i in 0:3){
+  assign(paste("resp", i, sep=""), readRDS(paste("Brms models/final rr models/resp", i, ".rds", sep="")), envir = .GlobalEnv)
+}
 # 
 # for(i in 1:10){
 #   assign(paste("recov", i, sep=""), readRDS(paste("Brms models/final rr models/recov", i, ".rds", sep="")), envir = .GlobalEnv)
 # }
+bprior <- prior_string("normal(0,10)", class = "b")
 
 #### Q1: Species level differences----
 ## response
-resp0 <- brm(bf(drought_fx~Species + (1|tree.uniqueID), sigma~Species), family=gaussian(), data=l_leg, cores=4)
+resp0 <- brm(bf(drought_fx~ Species + (1|tree.uniqueID), sigma~Species), family=gaussian(), data=l_leg, cores=4)
 hyp <- "exp(sigma_Intercept + sigma_SpeciesPJ) > exp(sigma_Intercept)"
 (hyp <- hypothesis(resp0, hyp))
 plot(hyp)
@@ -67,6 +67,8 @@ resp2 <- update(resp0, formula. = ~ . - Species + spei12, newdata=l_leg, cores=4
 resp3 <- update(resp0, formula. = ~ . + spei12, newdata=l_leg, cores=4)
 resp4 <- update(resp0, formula. = ~ . + spei12*Species, newdata=l_leg, cores=4)
 
+resp3b <- brm(bf(drought_fx~ Species + spei12 + (1|tree.uniqueID)), family=gaussian(), data=l_leg, cores=4)
+saveRDS(resp3b, "Brms models/final rr models/resp3b.rds")
 
 for(i in 2:4){
   mod <- get(paste("resp", i, sep="")) 
@@ -112,6 +114,9 @@ plot(hyp)
 recov2 <- update(recov0, formula. = ~ . + drought_fx - Species, newdata=l_leg, cores=4)
 recov3 <- update(recov0, formula. = ~ . + drought_fx, newdata=l_leg, cores=4)
 recov4 <- update(recov0, formula. = ~ . + drought_fx + drought_fx:Species, newdata=l_leg, cores=4)
+
+recov4b <- brm(bf(recovery~Species + drought_fx + drought_fx:Species + (1|tree.uniqueID)), family=gaussian(), data=l_leg, cores=4)
+saveRDS(recov4b, "Brms models/final rr models/recov4b.rds")
 
 plot(marginal_effects(recov4), points = TRUE)
 

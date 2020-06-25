@@ -37,6 +37,7 @@ library(ggstance)
 library(ggrepel)
 library(outliers)
 library(ggmap)
+library(performance)
 
 ```
 
@@ -117,6 +118,22 @@ avg_clim <- raw_clim %>%
 site_clim <- avg_clim %>% 
   group_by(Region)  %>% 
   summarize_all(mean)
+
+site_area <- read.csv("Processed Data/site_area.csv")
+dia_data <- read.csv("Processed Data/field_data.csv") %>% 
+  filter(Site2!="ic") %>% 
+  left_join(site_area)
+
+trees_area <- group_by(dia_data, Region, hilo, Site, Neighborhood, Species) %>% 
+  summarise(density = length(unique(tree.uniqueID)),
+            BA = sum(totBA, na.rm=T),
+            area_m=mean(area),
+            area=area_m*0.0001,
+            tph = density/(area),
+            BA_ph=BA/(area))
+  
+
+
 ```
 
 ```{r map, echo=F, message=F}
@@ -200,10 +217,58 @@ plot_grid(
   legend, ncol=1, rel_heights = c(1, 0.05))
 
 
-# plot_grid(plot_grid(p2, drought, ncol=1, rel_heights=c(0.3, 0.7), c("a)", "c)")),
-#           plot_grid(map, bivar, ncol=1, rel_heights=c(1, 1)), nrow=1, rel_widths=c(0.6, 0.4), labels=c("b)", "d)"))
+plot_grid(plot_grid(p2, drought, ncol=1, rel_heights=c(0.3, 0.7), c("a)", "c)")),
+          plot_grid(map, bivar, ncol=1, rel_heights=c(1, 1)), nrow=1, rel_widths=c(0.6, 0.4), labels=c("b)", "d)"))
+
+ggplot(dia_data, aes(interaction(hilo, Region))) +
+  geom_bar(aes(fill=Species), position = "fill") +
+  scale_fill_viridis(discrete=T) +
+  ylab("Relative abundance") +
+  theme_test() +
+  theme(axis.title.x=element_blank())
+
+trees_area2 <- group_by(trees_area, Region, hilo, Site, Species) %>% 
+  summarise_all(mean)
+
+ggplot(trees_area, aes(x=interaction(Neighborhood))) +
+  geom_bar(aes(y=tph, fill=Species), stat="identity", position="dodge") +
+  # facet_wrap(~Region, scales="free") +
+  facet_grid(Region~hilo) +
+  scale_fill_viridis(discrete=T) +
+  ylab("Density (trees per hectare)") +
+  theme_test() +
+  # theme(legend.position = 'none') + 
+  theme(axis.title.x=element_blank(),
+        axis.text.x = element_text(angle = 45, hjust=1))
 
 
+p1 <- ggplot(trees_area2, aes(x=interaction(hilo, Region))) +
+  geom_bar(aes(y=tph, fill=Species), stat="identity") +
+  scale_fill_viridis(discrete=T) +
+  ylab("Density (trees per hectare)") +
+  theme_test() +
+  theme(legend.position = 'none') +
+  theme(axis.title.x=element_blank(),
+        axis.text.x = element_text(angle = 45, hjust=1))
+
+p2 <- ggplot(trees_area2, aes(x=interaction(hilo, Region))) +
+  geom_bar(aes(y=BA_ph, fill=Species), stat="identity") +
+  scale_fill_viridis(discrete=T) +
+  ylab("Basal area (m^2 per hectare)") +
+  theme_test() +
+  theme(legend.position = 'none') +
+  theme(axis.title.x=element_blank(),
+        axis.text.x = element_text(angle = 45, hjust=1))
+
+dummy <- ggplot(trees_area2, aes(x=interaction(hilo, Region))) +
+  geom_bar(aes(y=BA_ph, fill=Species), stat="identity") +
+  scale_fill_viridis(discrete=T) +
+  theme_test() +
+  theme(legend.title = element_blank())
+
+legend <- get_legend(dummy)
+
+plot_grid(p1, p2, legend, nrow=1, labels=c("a)", "b)"), rel_widths=c(1,1,0.2))
 
 ```
 
@@ -253,6 +318,9 @@ for(i in c(2:4)){
   assign(paste("resp", i, sep=""), readRDS(paste("Brms models/final rr models/resp", i, ".rds", sep="")), envir = .GlobalEnv)
     assign(paste("recov", i, sep=""), readRDS(paste("Brms models/final rr models/recov", i, ".rds", sep="")), envir = .GlobalEnv)
 }
+
+resp3b <- readRDS("Brms models/final rr models/resp3b.rds")
+recov4b <-readRDS("Brms models/final rr models/recov4b.rds")
 ```
 #### Growth Reduction
 
@@ -264,8 +332,17 @@ for(i in c(2:4)){
 w <- loo_compare(`SPEI only`, `Species + SPEI`,`Species * SPEI`, criterion = "waic")
 
 w2 <- cbind(waic_diff = w[, 1] * -2,
-      se        = w[, 2] *  2)
+      se        = w[, 2] *  2) %>% round(digits=2)
 kable(w2, "html", caption="Table SX. Growth reduction WAIC table") 
+
+`Species var` <- add_criterion(resp3, "waic")
+`Global var` <- add_criterion(resp3b, "waic")
+
+wb <- loo_compare(`Species var`, `Global var`, criterion = "waic") 
+
+w2b <- cbind(waic_diff = wb[, 1] * -2,
+      se        = wb[, 2] *  2) %>% round(digits=2)
+kable(w2b, "html", caption="Table SX. Growth reduction WAIC table variance term") 
 ```
 
 ```{r resp_spp}
@@ -299,8 +376,17 @@ kable(temp, "html", caption="Table SX. Growth reduction intercept contrasts")
 w <- loo_compare(`No species effect`, `Varying intercept`,`Varying intercept and slope`, criterion = "waic")
 
 w2 <- cbind(waic_diff = w[, 1] * -2,
-      se        = w[, 2] *  2)
+      se        = w[, 2] *  2) %>% round(digits=2)
 kable(w2, "html", caption="Table SX. Recovery WAIC table") 
+
+`Species var` <- add_criterion(recov4, "waic")
+`Global var` <- add_criterion(recov4b, "waic")
+
+wb <- loo_compare(`Species var`, `Global var`, criterion = "waic")
+
+w2b <- cbind(waic_diff = wb[, 1] * -2,
+      se        = wb[, 2] *  2) %>% round(digits=2)
+kable(w2b, "html", caption="Table SX. Recovery WAIC table, variance term") 
 ```
 
 ```{r recov_spp}
@@ -374,6 +460,7 @@ recov_param <- recov4 %>%
 #### Param Plots
 
 ```{r q1_fig}
+
 p1 <- ggplot(resp_param, aes(y = param, x = value, xmin = .lower, xmax = .upper, color=Species)) +
   geom_vline(xintercept = 0, linetype="dashed") +
   geom_pointintervalh(position = position_dodgev(-0.5)) + 
@@ -381,8 +468,10 @@ p1 <- ggplot(resp_param, aes(y = param, x = value, xmin = .lower, xmax = .upper,
   theme(legend.position = 'none') +
   xlab("Parameter estimate") + 
   scale_color_manual(values=c("#FDE725FF","#000000", "#21908CFF", "#440154FF"))+
-  ggtitle("a) Growth reduction") +
-  ylab("") + xlab("")
+  ggtitle("Growth reduction") +
+  theme(axis.title=element_blank()) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))
+
 
 p2 <- ggplot(recov_param, aes(y = param, x = value, xmin = .lower, xmax = .upper, color=Species)) +
   geom_vline(xintercept = 0, linetype="dashed") +
@@ -391,8 +480,9 @@ p2 <- ggplot(recov_param, aes(y = param, x = value, xmin = .lower, xmax = .upper
   theme(legend.position = 'none') +
   xlab("Parameter estimate") + 
   scale_color_manual(values=c("#FDE725FF","#21908CFF", "#440154FF"))+
-  ggtitle("b) Recovery") +
-  ylab("") 
+  ggtitle("Recovery") +
+  theme(axis.title.y=element_blank()) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))
 
 dummy <- ggplot(l_leg, aes(x = drought_fx, y = recovery, color = Species)) +
   geom_point() + scale_color_viridis(discrete=TRUE, direction=-1) +
@@ -400,7 +490,7 @@ dummy <- ggplot(l_leg, aes(x = drought_fx, y = recovery, color = Species)) +
 
 legend <- cowplot::get_legend(dummy)
 
-plot_grid(plot_grid(p1, p2, cols=1), legend, ncol=2, rel_widths = c(1, 0.2))
+plot_grid(plot_grid(p1, p2, ncol=1, labels = c("a)", "b)")), legend, ncol=2, rel_widths = c(1, 0.2))
 ```
 
 #### Main Figure
@@ -418,10 +508,11 @@ p1 <- l_leg %>%
   scale_color_viridis(discrete=TRUE, direction=-1) +
   scale_x_reverse() +
   theme_test() +
-  xlab("Drought Intensity (SPEI)") +
-  ylab("Growth Reduction") +
+  xlab("Drought intensity (SPEI)") +
+  ylab("Growth reduction") +
   theme(legend.position = 'none') +
-  ggtitle("a)") 
+  ggtitle("") +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))
 
 p2 <- l_leg %>%
   group_by(Species) %>%
@@ -435,10 +526,11 @@ p2 <- l_leg %>%
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE, direction=-1) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   theme(legend.position = 'none') +
-  ggtitle("b)") 
+  ggtitle("") +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))
 
 dummy <- ggplot(l_leg, aes(x = drought_fx, y = recovery, color = Species)) +
   geom_line() + scale_color_viridis(discrete=TRUE, direction=-1) +
@@ -446,7 +538,7 @@ dummy <- ggplot(l_leg, aes(x = drought_fx, y = recovery, color = Species)) +
 
 legend <- cowplot::get_legend(dummy)
 
-plot_grid(p1, p2, legend, ncol=3, rel_widths = c(1, 1, 0.3))
+plot_grid(p1, p2, legend, ncol=3, rel_widths = c(1, 1, 0.3), labels = c("a)", "b)"))
 
 ```
 
@@ -492,24 +584,26 @@ kable(w2_pl, "html", caption="Table SX. P. lambertiana growth reduction WAIC tab
 
 ```
 ```{r resp_icc_tables}
-h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
-           "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"),
-       paste("sd_Region__spei12^2 / (sd_Region__Intercept^2 +",
-           "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
-
-temp <- hypothesis(resp8_ac, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, growth reduction)") 
-temp <- hypothesis(resp8_pj, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, growth reduction)") 
-temp <- hypothesis(resp8_pl, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, growth reduction)") 
-
+# h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
+#            "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"),
+#        paste("sd_Region__spei12^2 / (sd_Region__Intercept^2 +",
+#            "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
+# 
+# temp <- hypothesis(resp8_ac, h, class=NULL)[[1]]
+# temp$Hypothesis[1] <- "region intercept/total"
+# temp$Hypothesis[2] <- "region slope/total"
+# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, growth reduction)") 
+# temp <- hypothesis(resp8_pj, h, class=NULL)[[1]]
+# temp$Hypothesis[1] <- "region intercept/total"
+# temp$Hypothesis[2] <- "region slope/total"
+# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, growth reduction)") 
+# temp <- hypothesis(resp8_pl, h, class=NULL)[[1]]
+# temp$Hypothesis[1] <- "region intercept/total"
+# temp$Hypothesis[2] <- "region slope/total"
+# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, growth reduction)") 
+icc(resp8_ac, re.form=~(1|Region))
+icc(resp8_pj, re.form=~(1|Region))
+icc(resp8_pl, re.form=~(1|Region))
 ```
 
 #### Recovery
@@ -540,23 +634,26 @@ kable(w2_pl, "html", caption = "Table SX. P. lambertiana recovery WAIC table")
 
 ```{r recov_icc_tables}
 
-h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
-           "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"), 
-       paste("sd_Region__drought_fx^2 / (sd_Region__Intercept^2 +",
-           "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
-
-temp <- hypothesis(recov8_ac, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, recovery)") 
-temp <- hypothesis(recov8_pj, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, recovery)") 
-temp <- hypothesis(recov8_pl, h, class=NULL)[[1]]
-temp$Hypothesis[1] <- "region intercept/total"
-temp$Hypothesis[2] <- "region slope/total"
-kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, recovery)") 
+# h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
+#            "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"), 
+#        paste("sd_Region__drought_fx^2 / (sd_Region__Intercept^2 +",
+#            "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
+# 
+# temp <- hypothesis(recov8_ac, h, class=NULL)[[1]]
+# temp$Hypothesis[1] <- "region intercept/total"
+# temp$Hypothesis[2] <- "region slope/total"
+# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, recovery)") 
+# temp <- hypothesis(recov8_pj, h, class=NULL)[[1]]
+# temp$Hypothesis[1] <- "region intercept/total"
+# temp$Hypothesis[2] <- "region slope/total"
+# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, recovery)") 
+# temp <- hypothesis(recov8_pl, h, class=NULL)[[1]]
+# temp$Hypothesis[1] <- "region intercept/total"
+# temp$Hypothesis[2] <- "region slope/total"
+# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, recovery)") 
+icc(recov8_ac, re.form=~(1|Region))
+icc(recov8_pj, re.form=~(1|Region))
+icc(recov8_pl, re.form=~(1|Region))
 
 ```
 
@@ -595,12 +692,14 @@ b_pl <- manip(resp8_pl, "b_spei12", "PL")
 cont_pl <- contrast(resp8_pl, "b_spei12")
 
 resp_param <- bind_rows(b_ac, b_pj, b_pl) %>% 
-  mutate(param=factor(param, levels=c("Intercept", "spei12")))
+  mutate(param=factor(param, levels=c("Intercept", "spei12")),
+         param2=ifelse(param=="Intercept", "Intercept", "Slope"))
 
 resp_cont <- bind_rows(mutate(cont_ac, Species="AC"), 
                        mutate(cont_pj, Species="PJ"),
                        mutate(cont_pl, Species="PL")) %>% 
-  mutate(signif=ifelse(.upper<0&.lower<0|.upper>0&.lower>0, "yes", "no"))
+  mutate(signif=ifelse(.upper<0&.lower<0|.upper>0&.lower>0, "yes", "no"),
+         param2=ifelse(param=="Intercept", "Intercept", "Slope"))
 
 b_ac <- manip(recov8_ac, "b_drought_fx", "AC")
 cont_ac <- contrast(recov8_ac, "b_drought_fx")
@@ -612,12 +711,14 @@ b_pl <- manip(recov8_pl, "b_drought_fx", "PL")
 cont_pl <- contrast(recov8_pl, "b_drought_fx")
 
 recov_param <- bind_rows(b_ac, b_pj, b_pl) %>% 
-  mutate(param=factor(param, levels=c("Intercept", "drought_fx")))
+  mutate(param=factor(param, levels=c("Intercept", "drought_fx")),
+         param2=ifelse(param=="Intercept", "Intercept", "Slope"))
 
 recov_cont <- bind_rows(mutate(cont_ac, Species="AC"), 
                        mutate(cont_pj, Species="PJ"),
                        mutate(cont_pl, Species="PL"))  %>% 
-  mutate(signif=ifelse(.upper<0&.lower<0|.upper>0&.lower>0, "yes", "no"))
+  mutate(signif=ifelse(.upper<0&.lower<0|.upper>0&.lower>0, "yes", "no"),
+         param2=ifelse(param=="Intercept", "Intercept", "Slope"))
 
 
 
@@ -628,23 +729,40 @@ recov_cont <- bind_rows(mutate(cont_ac, Species="AC"),
 abc <- c(AC="a)", PJ="b)", PL="c)")
 def <- c(AC="d)", PJ="e)", PL="f)")
 
-p1 <- ggplot(resp_param, aes(y = param, x = region_mean, xmin = .lower, xmax = .upper, color=Region)) +
-  geom_pointintervalh(position = position_dodgev(-0.4)) + 
+dat_text <- data.frame(
+  label = c("A. concolor", "P. jeffreyi", "P. lambertina"),
+  Species   = c("AC", 'PJ', "PL")
+)
+
+p1 <- ggplot(resp_param, aes(y = param2, x = region_mean)) +
+  geom_pointintervalh(aes(xmin = .lower, xmax = .upper, color=Region), position = position_dodgev(-0.4)) + 
   geom_vline(xintercept=0, linetype="dashed") +
   facet_grid(~Species, labeller=labeller(.cols=abc)) +
   theme_test() +
   scale_color_viridis(discrete=T, option="plasma") +
-  ylab("") + xlab("") + theme(legend.position = 'none') +
-  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0)))
+  theme(axis.title.x=element_blank()) +
+  ylab("Growth reduction") +
+  theme(legend.position = 'none') +
+  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))  + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = -Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
 
-p2 <- ggplot(recov_param, aes(y = param, x = region_mean, xmin = .lower, xmax = .upper, color=Region)) +
-  geom_pointintervalh(position = position_dodgev(-0.4)) + 
+
+p2 <- ggplot(recov_param, aes(y = param2, x = region_mean)) +
+  geom_pointintervalh(aes(xmin = .lower, xmax = .upper, color=Region), position = position_dodgev(-0.4)) + 
   geom_vline(xintercept=0, linetype="dashed") +
   facet_grid(~Species, labeller=labeller(.cols=def)) +
   theme_test() +
   scale_color_viridis(discrete=T, option="plasma") +
-  ylab("") + xlab("Parameter estimate") + theme(legend.position = 'none') +
-  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0)))
+  xlab("Parameter estimate") + theme(legend.position = 'none') +
+  ylab("Recovery") +
+  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = -Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
 
 dummy <- ggplot(l_leg, aes(x = drought_fx, y = recovery, color = Region)) +
   geom_point() + scale_color_viridis(discrete=T, option="plasma") +
@@ -652,143 +770,106 @@ dummy <- ggplot(l_leg, aes(x = drought_fx, y = recovery, color = Region)) +
 
 legend <- cowplot::get_legend(dummy)
 
-plot_grid(plot_grid(p1, p2, cols=1), legend, ncol=2, rel_widths = c(1, 0.2))
+plot_grid(plot_grid(p1, p2, cols=1, align='vh'), legend, ncol=2, rel_widths = c(1, 0.2))
 
+sp_lab <- c(AC="A. concolor", PJ="P. jeffreyi", PL="P. lambertiana")
 
 ggplot(resp_cont, aes(x=region_mean, y=region, color=signif)) +
-  geom_pointintervalh() + facet_grid(Species~param) +
+  geom_pointintervalh() + 
+  facet_grid(Species~param2, labeller=labeller(.rows=sp_lab)) +
   geom_vline(xintercept = 0, linetype="dashed") +
   theme_test() +
-  scale_color_grey(start=0.8, end=0)
+  xlab("Contrast estimate") +
+  ggtitle("Growth reduction") +
+  scale_color_grey(start=0.8, end=0) +
+  theme(legend.position="none") +
+  theme(axis.title.y=element_blank())+
+  theme(strip.background = element_blank(),
+        strip.text.y=element_text(face="italic"))
 
 ggplot(recov_cont, aes(x=region_mean, y=region, color=signif)) +
-  geom_pointintervalh() + facet_grid(Species~param) +
+  geom_pointintervalh() + 
+  facet_grid(Species~param2, labeller=labeller(.rows=sp_lab)) +
   geom_vline(xintercept = 0, linetype="dashed") +
   theme_test() +
-  scale_color_grey(start=0.8, end=0)
+  xlab("Contrast estimate") +
+  ggtitle("Recovery") +
+  scale_color_grey(start=0.8, end=0) +
+  theme(legend.position="none") +
+  theme(axis.title.y=element_blank())+
+  theme(strip.background = element_blank(),
+        strip.text.y=element_text(face="italic")) 
 ```
 
 #### Main Figure
 
 ```{r q2_scatter}
-p1 <- filter(l_leg, Species=="AC") %>%
-  group_by(Region) %>% 
+abc <- c(AC="a)", PJ="b)", PL="c)")
+def <- c(AC="d)", PJ="e)", PL="f)")
+
+dat_text <- data.frame(
+  label = c("A. concolor", "P. jeffreyi", "P. lambertina"),
+  Species   = c("AC", 'PJ', "PL")
+)
+
+p1 <- l_leg %>%
+  group_by(Region, Species) %>% 
   data_grid(Y, spei12 = seq_range(spei12, n = 10),
             tree.uniqueID=1) %>%
   add_fitted_draws(resp8_ac, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>%
-  ggplot(aes(x = spei12, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="AC"), aes(spei12, recovery, color = Region),alpha=0.3) +
-  stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
-  stat_lineribbon(aes(y = .value), .width = .01) +
+  ggplot(aes(x = spei12, y = .value)) +
+  geom_point(data=l_leg, aes(spei12, drought_fx, color = Region), alpha=0.3) +
+  stat_lineribbon(aes(y = .value, color = Region), .width = c(.95), alpha = 0.4) +
+  stat_lineribbon(aes(y = .value, color = Region), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE, option = 'plasma') +
+  facet_grid(~Species, labeller=labeller(.cols=abc)) +
   # facet_wrap(vars(hilo)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("SPEI") +
+  xlab("Drought intensity (SPEI)") +
   scale_x_reverse() +
-  ylab("Growth Reduction") +
-  theme(legend.position='none') +
-  ggtitle("a)") 
+  ylab("Growth reduction") +
+  theme(legend.position = 'none') +
+  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))  + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
 
-p2 <- filter(l_leg, Species=="PJ") %>%
-  group_by(Region) %>% 
-  data_grid(Y, spei12 = seq_range(spei12, n = 10),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(resp8_pj, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>%
-  ggplot(aes(x = spei12, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="PJ"), aes(spei12, recovery, color = Region),alpha=0.3) +
-  stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
-  stat_lineribbon(aes(y = .value), .width = .01) +
-  scale_fill_brewer(palette = "Greys") +
-  scale_color_viridis(discrete=TRUE, option = 'plasma') +
-  # facet_wrap(vars(hilo)) +
-  # ylim(-.4, .4) +
-  theme_test() +
-  xlab("SPEI") +
-  scale_x_reverse() +
-  theme(axis.title.y=element_blank()) +
-  theme(legend.position='none') +
-  ggtitle("b)") 
-
-p3 <- filter(l_leg, Species=="PL") %>%
-  group_by(Region) %>% 
-  data_grid(Y, spei12 = seq_range(spei12, n = 10),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(resp8_pl, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>%
-  ggplot(aes(x = spei12, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="PL"), aes(spei12, recovery, color = Region),alpha=0.3) +
-  stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
-  stat_lineribbon(aes(y = .value), .width = .01) +
-  scale_fill_brewer(palette = "Greys") +
-  scale_color_manual(values=c("#0D0887FF", "#9C179EFF", "#ED7953FF"))+
-  # facet_wrap(vars(hilo)) +
-  # ylim(-.4, .4) +
-  theme_test() +
-  xlab("SPEI") +
-  scale_x_reverse() +
-  theme(axis.title.y=element_blank()) +
-  theme(legend.position='none') +
-  ggtitle("c)") 
-
-p4 <- filter(l_leg, Species=="AC") %>%
-  group_by(Region) %>% 
+p2 <- l_leg %>%
+  group_by(Region, Species) %>% 
   data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
             tree.uniqueID=1) %>%
   add_fitted_draws(recov8_ac, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>%
-  ggplot(aes(x = drought_fx, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="AC"), aes(drought_fx, recovery, color = Region),alpha=0.3) +
-  stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
-  stat_lineribbon(aes(y = .value), .width = .01) +
+  ggplot(aes(x = drought_fx, y = .value)) +
+  geom_point(data=l_leg, aes(drought_fx, recovery, color = Region), alpha=0.3) +
+  stat_lineribbon(aes(y = .value, color = Region), .width = c(.95), alpha = 0.4) +
+  stat_lineribbon(aes(y = .value, color = Region), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_viridis(discrete=TRUE, option = 'plasma') +
+  facet_grid(~Species, labeller=labeller(.cols=def)) +
   # facet_wrap(vars(hilo)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   theme(legend.position = 'none') +
-  ggtitle("d)") 
+  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))  + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = -Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
 
-p5 <- filter(l_leg, Species=="PJ") %>%
-  group_by(Region) %>% 
-  data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(recov8_pj, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>%
-  ggplot(aes(x = drought_fx, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="PJ"), aes(drought_fx, recovery, color = Region),alpha=0.3) +
-  stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
-  stat_lineribbon(aes(y = .value), .width = .01) +
-  scale_fill_brewer(palette = "Greys") +
-  scale_color_viridis(discrete=TRUE, option = 'plasma') +
-  # facet_wrap(vars(hilo)) +
-  # ylim(-.4, .4) +
-  theme_test() +
-  xlab("Growth Reduction") +
-  theme(axis.title.y=element_blank()) +
-  theme(legend.position = 'none') +
-  ggtitle("e)") 
+dummy <- ggplot(l_leg, aes(x = drought_fx, y = recovery, color = Region)) +
+  geom_line() + scale_color_viridis(discrete=T, option="plasma") +
+  theme_test()
 
-p6 <- filter(l_leg, Species=="PL") %>%
-  group_by(Region) %>% 
-  data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
-            tree.uniqueID=1) %>%
-  add_fitted_draws(recov8_pl, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>%
-  ggplot(aes(x = drought_fx, y = .value, color = Region)) +
-  geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery, color = Region),alpha=0.3) +
-  stat_lineribbon(aes(y = .value), .width = c(.95), alpha = 0.4) +
-  stat_lineribbon(aes(y = .value), .width = .01) +
-  scale_fill_brewer(palette = "Greys") +
-  scale_color_manual(values=c("#0D0887FF", "#9C179EFF", "#ED7953FF"))+
-  # facet_wrap(vars(hilo)) +
-  # ylim(-.4, .4) +
-  theme_test() +
-  xlab("Growth Reduction") +
-  theme(axis.title.y=element_blank()) +
-  theme(legend.position = 'none') +
-  ggtitle("f)")  
+legend <- cowplot::get_legend(dummy)
 
-grid.arrange(p1, p2, p3, p4, p5, p6, ncol=3)
+plot_grid(plot_grid(p1, p2, cols=1, align='vh'), legend, ncol=2, rel_widths = c(1, 0.15))
+
+
 
 # plot_grid(plot_grid(p1, p2, cols=1), legend, ncol=2, rel_widths = c(1, 0.2))
 
@@ -821,19 +902,19 @@ manip <- function(mod, vars, spp){
     gather_draws(b_DBH, b_comp, !!vars[[4]], !!vars[[5]]) %>% 
     median_qi(.width = c(.95, .66)) %>% 
     mutate(region="all",
-           param=ifelse(.variable=="b_DBH", "dbh",
-                 ifelse(.variable=="b_comp", "comp",
-                 ifelse(.variable==vars[[4]], "dbh.int", "comp.int"))))
+           param=ifelse(.variable=="b_DBH", "DBH",
+                 ifelse(.variable=="b_comp", "Comp",
+                 ifelse(.variable==vars[[4]], "DBH interaction", "Comp interaction"))))
 
   temp2 <- mod %>% 
     spread_draws(b_Intercept, !!vars[[2]], r_Region[region,param]) %>% 
-    median_qi(intercept = b_Intercept + r_Region,
-              slope = !!vars[[2]] + r_Region,
+    median_qi(Intercept = b_Intercept + r_Region,
+              Slope = !!vars[[2]] + r_Region,
               .width = c(.95, .66)) %>% 
-    mutate(.value=ifelse(param=="Intercept", intercept, slope),
-           .upper=ifelse(param=="Intercept", intercept.upper, slope.upper),
-           .lower=ifelse(param=="Intercept", intercept.lower, slope.lower),
-           param=ifelse(param=="Intercept", "intercept", "slope")) %>% 
+    mutate(.value=ifelse(param=="Intercept", Intercept, Slope),
+           .upper=ifelse(param=="Intercept", Intercept.upper, Slope.upper),
+           .lower=ifelse(param=="Intercept", Intercept.lower, Slope.lower),
+           param=ifelse(param=="Intercept", "Intercept", "Slope")) %>% 
     dplyr::select(c(param, .value, .lower, .upper, .width, .point, .interval, region))
 
   bind_rows(temp, temp2) %>% 
@@ -847,8 +928,8 @@ p_pl <- manip(resp_full_pl, varlist("spei12"), "PL")
 
 resp_all <- bind_rows(p_ac, p_pj, p_pl) %>% 
   mutate(region=factor(region, levels=c("all", "San.Jac", "SENF", "SEKI", "Mammoth")),
-         param=factor(param, levels=c("intercept", "slope", "dbh", "comp", "dbh.int", "comp.int")),
-         global=ifelse(param%in%c("intercept", "slope"), "regional", "global"),
+         param=factor(param, levels=c("Intercept", "Slope", "DBH", "Comp", "DBH interaction", "Comp interaction")),
+         global=ifelse(param%in%c("Intercept", "Slope"), "regional", "global"),
          response="resp")
 
 p_ac2 <- manip(recov_full_ac, varlist("drought_fx"), "AC") 
@@ -857,12 +938,12 @@ p_pl2 <- manip(recov_full_pl, varlist("drought_fx"), "PL")
 
 recov_all <- bind_rows(p_ac2, p_pj2, p_pl2) %>% 
   mutate(region=factor(region, levels=c("all", "San.Jac", "SENF", "SEKI", "Mammoth")),
-         param=factor(param, levels=c("intercept", "slope", "dbh", "comp", "dbh.int", "comp.int")),
-         global=ifelse(param%in%c("intercept", "slope"), "regional", "global"),
+         param=factor(param, levels=c("Intercept", "Slope", "DBH", "Comp", "DBH interaction", "Comp interaction")),
+         global=ifelse(param%in%c("Intercept", "Slope"), "regional", "global"),
          response="recov")
 
 dbh_param <- bind_rows(resp_all, recov_all) %>% 
-  filter(!param%in%c("intercept", "slope")) %>% 
+  filter(!param%in%c("Intercept", "Slope")) %>% 
   mutate(signif=ifelse(.upper>0&.lower>0|.upper<0&.lower<0, "yes", "no")) %>% 
   pivot_wider(id_cols = -c(".width", ".value", ".lower", ".upper", "signif"), names_from=".width", values_from = c(".value", ".lower", ".upper", "signif")) %>% 
   mutate(signif95=ifelse(signif_0.95=="yes", "yes", "no")) %>% 
@@ -876,6 +957,8 @@ dbh_param <- bind_rows(resp_all, recov_all) %>%
 
 get_scaled_data <- function(data, spp) {
   data %>% 
+    mutate(spei12_raw=spei12,
+           drought_fx_raw=drought_fx) %>% 
     mutate_at(vars(spei12, drought_fx, DBH, comp), scale) %>% 
     filter(Species==spp) %>% 
     mutate(Region=droplevels(Region))
@@ -883,22 +966,27 @@ get_scaled_data <- function(data, spp) {
 
 get_pred_data <- function(data, model) {
   if(str_detect(deparse(substitute(model)), "resp")) {
+    pred <- data.frame(spei12 = seq_range(data$spei12, n = 10),
+              spei12_raw = seq_range(data$spei12_raw, n = 10))
+    
     data %>%
     group_by(Region) %>% 
-    data_grid(Y, spei12 = seq_range(spei12, n = 10),
-              DBH = c(min(data$DBH), 0, max(data$DBH)),
-              comp = c(min(data$comp), 0, max(data$comp)),
+    data_grid(Y, pred,
+              DBH = quantile(data$DBH, probs=c(.025, .5, .975), na.rm=T),
+              comp = quantile(data$comp, probs=c(.025, .5, .975), na.rm=T),
               tree.uniqueID=1) %>%
     add_fitted_draws(model, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
     ungroup() %>% 
     mutate(DBH=as.factor(round(DBH*data$sd_dbh+data$mean_dbh, digits=2)),
            comp=as.factor(round(comp*data$sd_comp+data$mean_comp, digits=2)))
   } else {
+       pred <- data.frame(drought_fx = seq_range(data$drought_fx, n = 10),
+              drought_fx_raw = seq_range(data$drought_fx_raw, n = 10))
     data %>%
     group_by(Region) %>% 
-    data_grid(Y, drought_fx = seq_range(drought_fx, n = 10),
-              DBH = c(min(data$DBH), 0, max(data$DBH)),
-              comp = c(min(data$comp), 0, max(data$comp)),
+    data_grid(Y, pred,
+              DBH = quantile(data$DBH, probs=c(.025, .5, .975), na.rm=T),
+              comp = quantile(data$comp, probs=c(.025, .5, .975), na.rm=T),
               tree.uniqueID=1) %>%
     add_fitted_draws(model, n = 50, re_formula = NULL, allow_new_levels=TRUE) %>% 
     ungroup() %>% 
@@ -912,66 +1000,129 @@ get_pred_data <- function(data, model) {
 
 #### Param Plots
 
-```{r q3_fig}      
-ggplot(resp_all, aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=region)) +
+```{r q3_fig}  
+# 
+# bayes_R2(resp_full_ac)[1]-bayes_R2(resp8_ac)[1]
+# bayes_R2(resp_full_pj)[1]-bayes_R2(resp8_pj)[1]
+# bayes_R2(resp_full_pl)[1]-bayes_R2(resp8_pl)[1]
+# bayes_R2(recov_full_ac)[1]-bayes_R2(recov8_ac)[1]
+# bayes_R2(recov_full_pj)[1]-bayes_R2(recov8_pj)[1]
+# bayes_R2(recov_full_pl)[1]-bayes_R2(recov8_pl)[1]
+
+sp_lab <- c(AC="A. concolor", PJ="P. jeffreyi", PL="P. lambertiana")
+p1 <- ggplot(filter(resp_all, global=="global"), aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=region)) +
   geom_vline(xintercept = 0, linetype="dashed") +
   geom_pointintervalh(position = position_dodgev(-0.5)) +
-  facet_wrap(global~Species, ncol=3, scales="free") +
+  facet_wrap(~Species, ncol=3, scales="free_x",
+             labeller=labeller(.cols=sp_lab)) +
   # facet_grid(~Species) +
   theme_test() +
   # theme(legend.position = 'none') +
   xlab("Parameter estimate") + 
   scale_color_manual(values=c("#000000", "#0D0887FF", "#9C179EFF", "#ED7953FF", "#F0F921FF"))+
-  ggtitle("Growth Reduction") +
-  theme(strip.background = element_blank(), strip.text = element_blank()) +
-  ylab("") + xlab("")
+  # ggtitle("Growth reduction") +
+  theme(strip.background = element_blank(), strip.text = element_text(face='italic')) +
+  theme(axis.title=element_blank()) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+  theme(legend.position = 'none')
 
-
-ggplot(recov_all, aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=region)) +
+p2 <- ggplot(filter(resp_all, global!="global"), aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=region)) +
   geom_vline(xintercept = 0, linetype="dashed") +
   geom_pointintervalh(position = position_dodgev(-0.5)) +
-  facet_wrap(global~Species, ncol=3, scales="free") +
+  facet_wrap(~Species, ncol=3, scales="free_x",
+             labeller=labeller(.cols=sp_lab)) +
   # facet_grid(~Species) +
   theme_test() +
+  # theme(legend.position = 'none') +
+  xlab("Parameter estimate") + 
+  scale_color_manual(values=c("#0D0887FF", "#9C179EFF", "#ED7953FF", "#F0F921FF"))+
+  theme(strip.background = element_blank(), strip.text = element_text(face='italic')) +
+  theme(axis.title=element_blank()) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+  theme(legend.position = 'none')
+
+plot_grid(p1, p2, ncol=1, align='vh')
+
+
+p1 <- ggplot(filter(recov_all, global=="global"), aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=region)) +
+  geom_vline(xintercept = 0, linetype="dashed") +
+  geom_pointintervalh(position = position_dodgev(-0.5)) +
+  facet_wrap(~Species, ncol=3, scales="free_x",
+             labeller=labeller(.cols=sp_lab)) +
+  # facet_grid(~Species) +
+  theme_test() +
+  # theme(legend.position = 'none') +
   xlab("Parameter estimate") + 
   scale_color_manual(values=c("#000000", "#0D0887FF", "#9C179EFF", "#ED7953FF", "#F0F921FF"))+
-  ggtitle("Recovery") +
-  theme(strip.background = element_blank(), strip.text = element_blank()) +
-  ylab("") + xlab("") + theme(legend.position="none")
+  # ggtitle("Recovery") +
+  theme(strip.background = element_blank(), strip.text = element_text(face='italic')) +
+  ylab("") + xlab("") +
+  theme(axis.title=element_blank()) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+  theme(legend.position = 'none')
+
+p2 <- ggplot(filter(recov_all, global!="global"), aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=region)) +
+  geom_vline(xintercept = 0, linetype="dashed") +
+  geom_pointintervalh(position = position_dodgev(-0.5)) +
+  facet_wrap(~Species, ncol=3, scales="free_x",
+             labeller=labeller(.cols=sp_lab)) +
+  # facet_grid(~Species) +
+  theme_test() +
+  # theme(legend.position = 'none') +
+  xlab("Parameter estimate") + 
+  scale_color_manual(values=c("#0D0887FF", "#9C179EFF", "#ED7953FF", "#F0F921FF"))+
+  theme(strip.background = element_blank(), strip.text = element_text(face='italic')) +
+  theme(axis.title=element_blank()) +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+  theme(legend.position = 'none')
+
+plot_grid(p1, p2, ncol=1, align='vh')
 
 abc <- c(AC="a)", PJ="b)", PL="c)")
 def <- c(AC="d)", PJ="e)", PL="f)")
 
-p1 <- ggplot(filter(dbh_param, response=="resp"), aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=signif95)) +
+dat_text <- data.frame(
+  label = c("A. concolor", "P. jeffreyi", "P. lambertina"),
+  Species   = c("AC", 'PJ', "PL")
+)
+
+p1 <- ggplot(filter(dbh_param, response=="resp"), aes(y = param, x = .value)) +
   geom_vline(xintercept = 0, linetype="dashed") +
-  geom_pointintervalh() +
+  geom_pointintervalh(aes(xmin = .lower, xmax = .upper, color=signif95)) +
   scale_color_grey(start=0.8, end=0) +
   facet_grid(cols=vars(Species), labeller=labeller(.cols=abc)) +
   # facet_grid(~Species) +
   theme_test() +
   # theme(legend.position = 'none') +
   xlab("Parameter estimate") + 
+  ylab("Growth reduction") +
+  theme(legend.position = 'none') +
   theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
-  ylab("") + xlab("") +
-  theme(legend.position = 'none')
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))  + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = -Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
 
-p2 <- ggplot(filter(dbh_param, response=="recov"), aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=signif95)) +
+p2 <- ggplot(filter(dbh_param, response=="recov"), aes(y = param, x = .value)) +
   geom_vline(xintercept = 0, linetype="dashed") +
-  geom_pointintervalh() +
+  geom_pointintervalh(aes(xmin = .lower, xmax = .upper, color=signif95)) +
   scale_color_grey(start=0.8, end=0) +
   facet_grid(cols=vars(Species), labeller=labeller(.cols=def)) +
   # facet_grid(~Species) +
   theme_test() +
   # theme(legend.position = 'none') +
   xlab("Parameter estimate") + 
+  ylab("Recovery") +
+  theme(legend.position = 'none') +
   theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
-  ylab("") + xlab("") +
-  theme(legend.position = 'none')
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))  + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = -Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
 
-grid.arrange(p1, p2, ncol=1)
+plot_grid(p1, p2, ncol=1, align='vh')
 
 
-  
 ```
 
 #### Main Figure
@@ -981,7 +1132,7 @@ ac_dat <- get_scaled_data(l_leg, "AC")
 pj_dat <- get_scaled_data(l_leg, "PJ")
 pl_dat <- get_scaled_data(l_leg, "PL")
 
-ac_pred <- get_pred_data(ac_dat, resp_full_ac)
+ac_pred <- get_pred_data(ac_dat, resp_full_ac) 
 pj_pred <- get_pred_data(pj_dat, resp_full_pj)
 pl_pred <- get_pred_data(pl_dat, resp_full_pl)
 
@@ -989,7 +1140,7 @@ senf_resp <- bind_rows(mutate(ac_pred, Species="ac"),
                        mutate(pj_pred, Species="pj"),
                        mutate(pl_pred, Species="pl")) %>% 
   filter(Region=="SENF") %>% 
-  mutate(response="Growth Reduction",
+  mutate(response="growth reduction",
          DBH=as.numeric(DBH),
          comp=as.numeric(comp),
          xvar=spei12) %>% 
@@ -1014,38 +1165,125 @@ senf_recov <- bind_rows(mutate(ac_pred2, Species="ac"),
   mutate(dbh2=factor(DBH, labels=c("small", "med", "large")), 
          comp2=factor(comp, labels=c("low", "med", "high")))
 
+abc <- c(ac="a)", pj="b)", pl="c)")
+def <- c(ac="d)", pj="e)", pl="f)")
 
-senf_all <- bind_rows(senf_resp, senf_recov)
+dat_text <- data.frame(
+  label = c("A. concolor", "P. jeffreyi", "P. lambertina"),
+  Species   = c("ac", 'pj', "pl")
+)
 
-ggplot(senf_all, aes(x = xvar, y = .value)) +
+p1 <-ggplot(senf_resp, aes(x = spei12_raw, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=dbh2), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=dbh2), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
-  scale_color_viridis(discrete=TRUE,) +
-  facet_grid(response~Species) +
+  scale_color_viridis(discrete=TRUE) +
+  facet_grid(~Species, labeller = labeller(.cols=abc)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Scaled predictor") +
-  ylab("Response variable") +
+  xlab("SPEI") +
+  ylab("Growth reduction") +
   guides(fill=FALSE) +
-  ggtitle("Size effects at SENF")
+  # ggtitle("Sequoia National Forest") +
+  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
+  labs(color="DBH") +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+  theme(legend.position = 'none') +
+  scale_x_reverse(labels=function(x) {round(x*unique(ac_dat$sd_spei12)+(unique(ac_dat$mean_spei12)), digits=1)}) + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
 
-ggplot(senf_all, aes(x = xvar, y = .value)) +
+p2 <-ggplot(senf_recov, aes(x = drought_fx_raw, y = .value)) +
+  # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
+  stat_lineribbon(aes(y = .value, color=dbh2), .width = c(.95), alpha = 0.4) +
+  stat_lineribbon(aes(y = .value, color=dbh2), .width = .01) +
+  scale_fill_brewer(palette = "Greys") +
+  scale_color_viridis(discrete=TRUE) +
+  facet_grid(~Species, labeller = labeller(.cols=def)) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  # ylim(-.4, .4) +
+  theme_test() +
+  xlab("Growth reduction") +
+  ylab("Recovery") +
+  guides(fill=FALSE) +
+  # ggtitle("Sequoia National Forest") +
+  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
+  labs(color="DBH") +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+  theme(legend.position = 'none')  + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = -Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
+
+dummy <- ggplot(senf_recov, aes(x = drought_fx_raw, y = .value, color=dbh2)) +
+  # geom_bar(stat = "summary", fun.y = "mean") +
+  geom_line(size=1.5)+
+  scale_color_viridis(discrete=T) +
+  theme_test() +
+  labs(color="DBH")
+
+legend <- cowplot::get_legend(dummy)
+
+plot_grid(plot_grid(p1, p2, ncol=1, align='vh', axis='trbl'), legend, ncol=2, rel_widths=c(1, 0.15))
+
+p1 <-ggplot(senf_resp, aes(x = spei12_raw, y = .value)) +
   # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
   stat_lineribbon(aes(y = .value, color=comp2), .width = c(.95), alpha = 0.4) +
   stat_lineribbon(aes(y = .value, color=comp2), .width = .01) +
   scale_fill_brewer(palette = "Greys") +
-  scale_color_viridis(discrete=TRUE,) +
-  facet_grid(response~Species) +
+  scale_color_viridis(discrete=TRUE) +
+  facet_grid(~Species, labeller = labeller(.cols=abc)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Scaled predictor") +
-  ylab("Response variable") +
-  guides(fill=FALSE)+
-  ggtitle("Competition effects at SENF")
+  xlab("SPEI") +
+  ylab("Growth reduction") +
+  guides(fill=FALSE) +
+  # ggtitle("Sequoia National Forest") +
+  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
+  labs(color="DBH") +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+  theme(legend.position = 'none') +
+  scale_x_reverse(labels=function(x) {round(x*unique(ac_dat$sd_spei12)+(unique(ac_dat$mean_spei12)), digits=1)}) + 
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
+
+p2 <-ggplot(senf_recov, aes(x = drought_fx_raw, y = .value)) +
+  # geom_point(data=filter(l_leg, Species=="PL"), aes(drought_fx, recovery),alpha=0.3) +
+  stat_lineribbon(aes(y = .value, color=comp2), .width = c(.95), alpha = 0.4) +
+  stat_lineribbon(aes(y = .value, color=comp2), .width = .01) +
+  scale_fill_brewer(palette = "Greys") +
+  scale_color_viridis(discrete=TRUE) +
+  facet_grid(~Species, labeller = labeller(.cols=def)) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  # ylim(-.4, .4) +
+  theme_test() +
+  xlab("Growth reduction") +
+  ylab("Recovery") +
+  guides(fill=FALSE) +
+  # ggtitle("Sequoia National Forest") +
+  theme(strip.background = element_blank(), strip.text = element_text(hjust=0, face="bold", size=rel(1.0))) +
+  labs(color="DBH") +
+  theme(plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+  theme(legend.position = 'none') +
+  geom_text(size = 3.5, fontface = 3, data = dat_text,
+    mapping = aes(x = -Inf, y = Inf, label = label),
+    hjust = -.05,vjust = 1.5)
+
+dummy <- ggplot(senf_recov, aes(x = drought_fx_raw, y = .value, color=comp2)) +
+  # geom_bar(stat = "summary", fun.y = "mean") +
+  geom_line(size=1.5)+
+  scale_color_viridis(discrete=T) +
+  theme_test() +
+  labs(color="Competition")
+
+legend <- cowplot::get_legend(dummy)
+
+plot_grid(plot_grid(p1, p2, ncol=1, align='vh', axis='trbl'), legend, ncol=2, rel_widths=c(1, 0.15))
 
 ```
 
@@ -1064,8 +1302,8 @@ ggplot(ac_pred, aes(x = spei12, y = .value, color = Region)) +
   # scale_x_reverse() +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  xlab("Growth reduction") +
+  ylab("SPEI") +
   guides(fill=FALSE)+
   ggtitle("AC regional effects") +
   scale_x_reverse(labels=function(x) {round(x*unique(ac_dat$sd_spei12)+(unique(ac_dat$mean_spei12)), digits=1)})
@@ -1079,8 +1317,8 @@ ggplot(ac_pred, aes(x = spei12, y = .value)) +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  ylab("Growth reduction") +
+  xlab("Drought intensity") +
   guides(fill=FALSE)+
   ggtitle("AC Competition") +
   scale_x_reverse(labels=function(x) {round(x*unique(ac_dat$sd_spei12)+(unique(ac_dat$mean_spei12)), digits=1)})
@@ -1095,8 +1333,8 @@ ggplot(ac_pred, aes(x = spei12, y = .value)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  ylab("Growth reduction") +
+  xlab("Drought intensity") +
   guides(fill=FALSE)+
   ggtitle("AC DBH") +
   scale_x_reverse(labels=function(x) {round(x*unique(ac_dat$sd_spei12)+(unique(ac_dat$mean_spei12)), digits=1)})
@@ -1114,8 +1352,8 @@ ggplot(pj_pred, aes(x = spei12, y = .value, color = Region)) +
   scale_x_reverse(labels=function(x) {round(x*unique(pj_dat$sd_spei12)+(unique(pj_dat$mean_spei12)), digits=1)}) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  ylab("Growth reduction") +
+  xlab("Drought intensity") +
   guides(fill=FALSE)+
   ggtitle("PJ regional effects") 
 
@@ -1129,8 +1367,8 @@ ggplot(pj_pred, aes(x = spei12, y = .value)) +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  ylab("Growth reduction") +
+  xlab("Drought intensity") +
   guides(fill=FALSE)+
   ggtitle("PJ Competition") 
 
@@ -1145,8 +1383,8 @@ ggplot(pj_pred, aes(x = spei12, y = .value)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  ylab("Growth reduction") +
+  xlab("Drought intensity") +
   guides(fill=FALSE)+
   ggtitle("PJ DBH") 
 ```
@@ -1162,8 +1400,8 @@ ggplot(pl_pred, aes(x = spei12, y = .value, color = Region)) +
   scale_x_reverse(labels=function(x) {round(x*unique(pl_dat$sd_spei12)+(unique(pl_dat$mean_spei12)), digits=1)}) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  ylab("Growth reduction") +
+  xlab("Drought intensity") +
   guides(fill=FALSE)+
   ggtitle("PL regional effects") 
 
@@ -1177,8 +1415,8 @@ ggplot(pl_pred, aes(x = spei12, y = .value)) +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  ylab("Growth reduction") +
+  xlab("Drought intensity") +
   guides(fill=FALSE)+
   ggtitle("PL Competition") 
 
@@ -1193,8 +1431,8 @@ ggplot(pl_pred, aes(x = spei12, y = .value)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Drought Intensity") +
-  ylab("Growth Reduction") +
+  ylab("Growth reduction") +
+  xlab("Drought intensity") +
   guides(fill=FALSE)+
   ggtitle("PL DBH") 
 ```
@@ -1215,7 +1453,7 @@ ggplot(ac_pred2, aes(x = drought_fx, y = .value, color = Region)) +
   # facet_wrap(vars(hilo)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("AC Regional effects") +
@@ -1230,7 +1468,7 @@ ggplot(ac_pred2, aes(x = drought_fx, y = .value)) +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("AC Competition") +
@@ -1246,7 +1484,7 @@ ggplot(ac_pred2, aes(x = drought_fx, y = .value)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("AC DBH") +
@@ -1263,7 +1501,7 @@ ggplot(pj_pred2, aes(x = drought_fx, y = .value, color = Region)) +
   # facet_wrap(vars(hilo)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("PJ Regional effects") +
@@ -1278,7 +1516,7 @@ ggplot(pj_pred2, aes(x = drought_fx, y = .value)) +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("PJ Competition") +
@@ -1294,7 +1532,7 @@ ggplot(pj_pred2, aes(x = drought_fx, y = .value)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("PJ DBH") +
@@ -1313,7 +1551,7 @@ ggplot(pl_pred2, aes(x = drought_fx, y = .value, color = Region)) +
   # facet_wrap(vars(hilo)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("PL Regional effects") +
@@ -1328,7 +1566,7 @@ ggplot(pl_pred2, aes(x = drought_fx, y = .value)) +
   facet_wrap(vars(Region)) +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("PL Competition") +
@@ -1344,7 +1582,7 @@ ggplot(pl_pred2, aes(x = drought_fx, y = .value)) +
   geom_hline(yintercept = 0, linetype="dashed") +
   # ylim(-.4, .4) +
   theme_test() +
-  xlab("Growth Reduction") +
+  xlab("Growth reduction") +
   ylab("Recovery") +
   guides(fill=FALSE) +
   ggtitle("PL DBH") +

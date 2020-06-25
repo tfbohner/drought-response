@@ -4,6 +4,8 @@ output:
   html_document:
     toc: true
     toc_float: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -53,6 +55,7 @@ options(
 fielddata <- drive_get(as_id("1Y_PSgFJz4bSW00JYoRiVnXrCrhL776QA4dNSOWl4Clg"))
 dia_data <- read_sheet(fielddata, sheet = 2)
 sitechar <- read_sheet(fielddata, sheet=3)
+dia_data_new <- read_sheet(fielddata, sheet = 4)
 
 sitechar <- rename(sitechar, siteno=No.) %>% 
   dplyr::select(c("Region", "siteno", "Site", "Site2", "Neighborhood", "hilo", "X", "Y"))
@@ -415,61 +418,134 @@ write.csv(allprism3, "Processed Data/monthly_precip_temp_spei.csv", row.names = 
 This includes location, DBH, site characteristics, and hegyi index calculation.  Still a handful of id problems, verify field and gps data.
 
 ```{r manip, echo=T, results='hide'}
-dia_data2 <- dia_data %>% 
-  dplyr::select(-Region) %>% 
-  left_join(sites2) %>% 
-  mutate(Species=tolower(paste(str_sub(Species, 1,1), str_sub(Species, 3,3), sep="")),
-         Species=ifelse(Species=="?", "xx",
-                         ifelse(Species=="x", "xx",
-                                ifelse(Species=="a?", "ax", Species))),
-         tree.uniqueID = tolower(paste(paste(siteno, Species, Neighborhood, sep=""), ID, sep="_")),
-         totDBH=rowSums(dplyr::select(., "DBH", "DBHstem2", "DBHstem3"), na.rm=T),
+# dia_data2 <- dia_data %>% 
+#   dplyr::select(-Region) %>% 
+#   left_join(sites2) %>% 
+#   mutate(Species=tolower(paste(str_sub(Species, 1,1), str_sub(Species, 3,3), sep="")),
+#          Species=ifelse(Species=="?", "xx",
+#                          ifelse(Species=="x", "xx",
+#                                 ifelse(Species=="a?", "ax", Species))),
+#          tree.uniqueID = tolower(paste(paste(siteno, Species, Neighborhood, sep=""), ID, sep="_")),
+#          DBHstem1=ifelse(!is.na(DBHT3), DBHT3, 
+#                        ifelse(!is.na(DBHT2), DBHT2, DBH)),
+#          BA1 = .00007854*DBHstem1^2,
+#          BA2 = .00007854*DBHstem2^2,
+#          BA3 = .00007854*DBHstem3^2) %>% 
+#   mutate(totDBH=rowSums(dplyr::select(.,"DBHstem1", "DBHstem2", "DBHstem3"), na.rm=T),
+#          totBA=rowSums(dplyr::select(.,"BA1", "BA2", "BA3"), na.rm=T),
+#          totDBH=ifelse(totDBH==0, NA, totDBH),
+#          totBA=ifelse(totBA==0, NA, totBA)) %>% 
+#   dplyr::select(c(tree.uniqueID, Site, Neighborhood, Species, totDBH, totBA))
+
+library(lubridate)
+
+dia_data2 <- dia_data_new %>%
+  dplyr::select(-Region, -Site) %>%
+  left_join(sites2) %>%
+  mutate_at(c("DBH", "DBHstem2", "DBHstem3", "DBHT2", "DBHT3", "Neighborhood"), as.numeric) %>%
+  mutate_at(vars(starts_with("Status")), as.numeric) %>% 
+  mutate_at(vars(starts_with("Date")), ymd) %>% 
+  mutate(
+         DBHstem1=ifelse(!is.na(DBHT3), DBHT3,
+                       ifelse(!is.na(DBHT2), DBHT2, DBH)),
+         BA1 = .00007854*DBHstem1^2,
+         BA2 = .00007854*DBHstem2^2,
+         BA3 = .00007854*DBHstem3^2) %>%
+  mutate(totDBH=rowSums(dplyr::select(.,"DBHstem1", "DBHstem2", "DBHstem3"), na.rm=T),
+         totBA=rowSums(dplyr::select(.,"BA1", "BA2", "BA3"), na.rm=T),
          totDBH=ifelse(totDBH==0, NA, totDBH),
-         totDBH=ifelse(!is.na(DBHT3), DBHT3, 
-                       ifelse(!is.na(DBHT2), DBHT2, totDBH))) %>% 
-  
-  dplyr::select(c(tree.uniqueID, totDBH))
-# 
-# focalsub <- group_by(allrings, tree.uniqueID) %>%
-#   summarise()
-# 
-# test <-anti_join(focalsub, dia_data2)
+         totBA=ifelse(totBA==0, NA, totBA))
 
-dist_mat <- read.csv("Raw Data/dist mat 20m.csv") %>% 
-  rename(focalID=InputID, compID=TargetID) %>% 
-  mutate_at(c("focalID", "compID"), as.character) %>% 
-  left_join(dia_data2, by=c("focalID"="tree.uniqueID")) %>%
-  rename(focalDBH=totDBH) %>% 
-  left_join(dia_data2, by=c("compID"="tree.uniqueID")) %>%
-  rename(compDBH=totDBH) %>% 
-  filter(focalID!=compID) %>% 
-  mutate(Distance=ifelse(Distance==0, 0.000001, Distance))
 
-# treeswithcoord <- group_by(dist_mat, focalID) %>%
-#   summarise() %>%
-#   filter(focalID%in%unique(allrings$tree.uniqueID))
+write.csv(dia_data2, "Processed Data/field_data.csv", row.names = F)
+
+dia_data2 <- dia_data2 %>%
+  dplyr::select(c(tree.uniqueID, Site, Neighborhood, Species, totDBH, totBA))
+
+raw_loc <- read.csv("Raw data/all_loc.csv") 
+
+test <- raw_loc %>% 
+  filter(tree.uniqueID %in% raw_loc$tree.uniqueID[duplicated(raw_loc$tree.uniqueID)==T])
+
+loc_data <- raw_loc %>% 
+  inner_join(dplyr::select(dia_data2, c(tree.uniqueID, Site, Neighborhood))) %>% ## there are some naming errors
+  group_by(tree.uniqueID) %>% summarise_all(first)
+# loc_data <- loc_data %>%
+#   filter(Site=="Black Mountain") %>%
+#   filter(Neighborhood==3)
+
+loc_grid <- loc_data %>% 
+  rename(Site.x=Site, Neighborhood.x=Neighborhood, tree.uniqueID.x=tree.uniqueID, X.x=X, Y.x=Y) %>% 
+  expand_grid(dplyr::select(loc_data, c(Site, Neighborhood, tree.uniqueID, X, Y))) %>% 
+  filter(Site.x==Site, Neighborhood.x==Neighborhood) %>% 
+  dplyr::select(-c(Site.x, Neighborhood.x)) 
+
+library(geosphere)
+loc_grid2 <- loc_grid %>% 
+  mutate(dist_m=distGeo(dplyr::select(loc_grid, c(X.x, Y.x)), dplyr::select(loc_grid, c(X, Y))),
+         bearing_deg=round(bearing(dplyr::select(loc_grid, c(X.x, Y.x)), dplyr::select(loc_grid, c(X, Y))), 2))
+
+xy <- dplyr::select(loc_data, c(X, Y))
+pair <- data.frame(distm(xy, fun=distGeo)) %>% ## calculates distance in m based on WGS84 elipsoid
+  mutate(tree.uniqueID=loc_data$tree.uniqueID)
+names(pair) <- c(loc_data$tree.uniqueID, "focalID")
+
+site_area <- loc_data %>% 
+  group_by(Site, Neighborhood) %>% 
+  summarise(area=NA)
+
+
+for(i in unique(loc_data$Site)) {
+  for(j in 1:3) {
+    data <- filter(loc_data, Site==i, Neighborhood==j) %>% 
+      dplyr::select(X,Y)
+    ch <- chull(data)
+    coords <- data[c(ch, ch[1]), ] 
+    site_area$area[which(site_area$Site==i&site_area$Neighborhood==j)] <- areaPolygon(coords)
+  }
+}
 # 
-# test2 <- anti_join(focalsub, treeswithcoord, by=c("tree.uniqueID"="focalID"))
+# plot(data)
+# lines(coords, col="red")
 
-hegyi <- dist_mat %>%
-  # na.omit() %>% 
-  group_by(focalID, focalDBH) %>%
-  mutate(ratio=(compDBH/focalDBH)/Distance,
-         simple=compDBH/Distance,
-         BA= 0.00007854*compDBH^2) %>%
+write.csv(site_area, "Processed Data/site_area.csv", row.names = F)
+
+dist_focal <- pair %>% 
+  pivot_longer(cols=-focalID, names_to="periphID", values_to="dist") %>% 
+  filter(dist!=0) %>% 
+  filter(focalID %in% unique(allrings$tree.uniqueID)) %>% 
+  filter(periphID %in% unique(allrings$tree.uniqueID)) %>% 
+  left_join(dplyr::select(dia_data2, c("focalID"="tree.uniqueID", Species, totDBH, Site, Neighborhood))) %>% 
+  rename(focalsp=Species, DBH=totDBH, Site.x=Site, Neighborhood.x=Neighborhood) %>% 
+  left_join(dplyr::select(dia_data2, c("periphID"="tree.uniqueID", Species, totBA, Site, Neighborhood))) %>% 
+  rename(periphsp=Species) %>% 
+  filter(Site==Site.x, Neighborhood==Neighborhood.x) %>% 
+  dplyr::select(-c(Neighborhood.x, Site.x, Neighborhood, Site))
+
+dist_long <- pair %>% 
+  pivot_longer(cols=-focalID, names_to="periphID", values_to="dist") %>% 
+  filter(dist!=0, dist<=20) %>% 
+  filter(focalID %in% unique(allrings$tree.uniqueID)) %>% 
+  left_join(dplyr::select(dia_data2, c("focalID"="tree.uniqueID", Species, totDBH, totBA))) %>% 
+  rename(focalsp=Species, focalDBH=totDBH, focalBA=totBA) %>% 
+  left_join(dplyr::select(dia_data2, c("periphID"="tree.uniqueID", Species, totDBH, totBA))) %>% 
+  rename(periphsp=Species) %>% 
+  mutate(con_het=ifelse(focalsp==periphsp, "con", "het"))
+
+hegyi <- dist_long %>%
+  na.omit() %>%
+  group_by(focalID, focalDBH, focalBA) %>%
+  mutate(ratio=(totDBH/focalDBH)/dist,
+         comp_stems=length(periphID),
+         compBA=sum(totBA)) %>%
   summarise(hegyi=sum(ratio, na.rm=T),
-            simple_comp=(sum(simple, na.rm=T)),
-            BA = sum(BA, na.rm=T)) ### missing lots of dbh's
+            BA = sum(compBA, na.rm=T)) 
 
-hegyi_focal <- filter(hegyi, focalID%in%unique(allrings$tree.uniqueID)) %>%
-  rename(tree.uniqueID=focalID) %>% 
-  dplyr::select(-focalDBH)
+# plot(hegyi_old$BA, hegyi$BA)
+# hegyi_old <- hegyi
+write.csv(hegyi, "Processed Data/comp_density.csv", row.names=F)
 
-rings_field <- inner_join(allrings, hegyi_focal) %>%
-  left_join(dia_data2) %>%
-  rename(DBH=totDBH)
-
-write.csv(rings_field, "Processed Data/matched_rings_field.csv", row.names = F)
+rings_field <- left_join(allrings, hegyi, by=c("tree.uniqueID"="focalID"))
 ```
 
 ## Resistance, Recovery, Resilience (RRR) data
@@ -565,10 +641,11 @@ for(j in unique(dfx_data$tree.uniqueID)) {
 
 dfx_data <- mutate(dfx_data,
                    Year_post1 = Year+1,
-                   Year_post2 = Year+2)
+                   Year_post2 = Year+2) %>% 
+  rename(DBH=focalDBH)
 
 dfx_summary <- dfx_data %>% 
-  group_by(Region, Site, hilo, Species, Neighborhood, tree.uniqueID, droughtyear, hegyi, simple_comp, BA, DBH) %>% 
+  group_by(Region, Site, hilo, Species, Neighborhood, tree.uniqueID, droughtyear, hegyi, BA, DBH) %>% 
   summarise(growth=mean(spline_growth, na.rm=T),#fss_growth
             post1=mean(post1, na.rm=T),
             post2=mean(post1, na.rm=T)) %>% 
@@ -652,7 +729,7 @@ for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
       dplyr::select(c(spei_post1, Species, unique.nb, tree.uniqueID, post1)) %>%
       rename(spei12=spei_post1)
 
-    pred_grow <- fitted(mod, newdata=newdata, summary=FALSE, nsamples = 1000)
+    pred_grow <- fitted(mod, newdata=newdata, summary=FALSE, nsamples = 1000, allow_new_levels=TRUE)
     newy_df <- data.frame(pred_grow) %>%
       mutate(tree.uniqueID=i,
              Year=j,
@@ -693,7 +770,7 @@ legacy <- big_df %>%
             leg1_50 = quantile(diff, .5, na.rm=T),
             leg1_025 = quantile(diff, .025, na.rm=T),
             leg1_975 = quantile(diff, .975, na.rm=T)) %>%
-  left_join(dplyr::select(dfx_data, c(Year, Site, Species, Neighborhood, Region, hilo, tree.uniqueID, hegyi, simple_comp, BA, DBH, reduction,
+  left_join(dplyr::select(dfx_data, c(Year, Site, Species, Neighborhood, Region, hilo, tree.uniqueID, hegyi, BA, DBH, reduction,
                                spei12, post1, post2, spei_post1, spei_post2, Year_post1, Year_post2, drought_fx)))
 
 
@@ -752,7 +829,7 @@ for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
       dplyr::select(c(spei_post1, Species, Year, unique.nb, tree.uniqueID, post1)) %>%
       rename(spei12=spei_post1)
 
-    pred_grow <- fitted(mod, newdata=newdata, summary=FALSE, nsamples = 500)
+    pred_grow <- fitted(mod, newdata=newdata, summary=FALSE, allow_new_levels=T, nsamples = 500)
     newy_df <- data.frame(pred_grow) %>%
       mutate(tree.uniqueID=i,
              Year=j,
