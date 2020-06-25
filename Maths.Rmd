@@ -10,14 +10,14 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 $$
-Growth\sim Normal(\mu_i,\sigma) 
+Growth_i\sim Normal(\mu_i,\sigma) 
 $$
 
 $$
 \mu_i= \alpha + \alpha_{Site:Nb_i} + \alpha_{TreeID_i} + 
-\beta1_{Site:Nb_i}\times SPEI +
-\beta2_{Site:Nb_i}\times Species +
-\beta3_{Site:Nb_i}\times SPEI:SPEI
+\beta1_{Site:Nb_i}\times SPEI_i +
+\beta2_{Site:Nb_i}\times Species_i +
+\beta3_{Site:Nb_i}\times SPEI_i:SPEI_i
 $$
 
 $$
