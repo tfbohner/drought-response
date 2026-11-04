@@ -1,4 +1,7 @@
-### predict growth without post-drought years
+## splineModelsServer
+## Hierarchical brms models of detrended growth against 12-month SPEI, with slopes varying by species, region and site; fit on a server. Compared in splineModelsDescription.Rmd.
+## Author: Teresa Bohner
+## Data are not included in this repository (see README).
 
 library(tidyverse)
 library(shiny)
@@ -147,4 +150,3 @@ legacy2 <- big_df2 %>%
             leg2_975 = quantile(diff, .975, na.rm=T)) %>% 
   select(-c(pred_mean, pred_50, pred_025, pred_975)) %>% 
   left_join(legacy)
-# write.csv(legacy2, "Processed Data/legacy.csv", row.names = F)

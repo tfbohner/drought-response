@@ -39,20 +39,16 @@ library(brms)
 For consistent naming across data files. Note I'm also reading in the field data here to be manipulated later to keep the google code together
 
 ```{r google, echo=T, results='hide'}
-## do authentication step first and copy id from google sheet url.
+## Authenticate once interactively; the OAuth token is cached in .secrets (git-ignored).
+## Set GOOGLE_ACCOUNT and FIELD_DATA_SHEET_ID (the ID in the field-data sheet's URL) in .Renviron.
+options(
+  gargle_oauth_cache = ".secrets",
+  gargle_oauth_email = Sys.getenv("GOOGLE_ACCOUNT")
+)
 drive_auth(cache = ".secrets")
-options(
-  gargle_oauth_cache = ".secrets",
-  gargle_oauth_email = "<your-google-account>"
-)
-
 sheets_auth(cache = ".secrets")
-options(
-  gargle_oauth_cache = ".secrets",
-  gargle_oauth_email = "<your-google-account>"
-)
 
-fielddata <- drive_get(as_id("<FIELD_DATA_SHEET_ID>"))
+fielddata <- drive_get(as_id(Sys.getenv("FIELD_DATA_SHEET_ID")))
 dia_data <- read_sheet(fielddata, sheet = 2)
 sitechar <- read_sheet(fielddata, sheet=3)
 dia_data_new <- read_sheet(fielddata, sheet = 4)
@@ -322,7 +318,6 @@ bobtemp <- read.csv("Raw Data/prism data/tmean189501_201412.csv", header=T) %>%
          Date=paste(Year, Month, sep='-'),
          Name=as.character(Name)) %>%
   dplyr::select(Name, Longitude, Latitude, Date, tmean_C) #%>% 
-  # filter(Date<2011)
 
 bobppt <- read.csv("Raw Data/prism data/ppt.csv", header=T) %>%
   gather(key="Date", value="ppt_mm", -c(place, y, x)) %>%
@@ -331,7 +326,6 @@ bobppt <- read.csv("Raw Data/prism data/ppt.csv", header=T) %>%
          Month=str_sub(Date, 6, 7),
          Date=paste(Year, Month, sep='-')) %>%
   dplyr::select(Name, Longitude, Latitude, Date, ppt_mm) #%>%
-  # filter(Date<2011)
 
 bobdata <- left_join(bobtemp, bobppt)
 
@@ -408,8 +402,6 @@ allprism3 <- allprism%>%
   group_by(Name, hydroyear) %>% 
   left_join(allspei) 
 
-# allprism2 <- pivot_wider(allprism, -c(Date, Year, ppt_mm, tmean_C), names_from=Month, values_from=c(spei1, spei6, spei12, spei18, spi12, spi18)) %>%
-#   mutate(Site=str_sub(Name, 1,2), Neighborhood=str_sub(Name,3,3))
 write.csv(allprism2, "Processed Data/precip_temp_spei.csv", row.names = F)
 write.csv(allprism3, "Processed Data/monthly_precip_temp_spei.csv", row.names = F)
 ```
@@ -418,24 +410,6 @@ write.csv(allprism3, "Processed Data/monthly_precip_temp_spei.csv", row.names = 
 This includes location, DBH, site characteristics, and hegyi index calculation.  Still a handful of id problems, verify field and gps data.
 
 ```{r manip, echo=T, results='hide'}
-# dia_data2 <- dia_data %>% 
-#   dplyr::select(-Region) %>% 
-#   left_join(sites2) %>% 
-#   mutate(Species=tolower(paste(str_sub(Species, 1,1), str_sub(Species, 3,3), sep="")),
-#          Species=ifelse(Species=="?", "xx",
-#                          ifelse(Species=="x", "xx",
-#                                 ifelse(Species=="a?", "ax", Species))),
-#          tree.uniqueID = tolower(paste(paste(siteno, Species, Neighborhood, sep=""), ID, sep="_")),
-#          DBHstem1=ifelse(!is.na(DBHT3), DBHT3, 
-#                        ifelse(!is.na(DBHT2), DBHT2, DBH)),
-#          BA1 = .00007854*DBHstem1^2,
-#          BA2 = .00007854*DBHstem2^2,
-#          BA3 = .00007854*DBHstem3^2) %>% 
-#   mutate(totDBH=rowSums(dplyr::select(.,"DBHstem1", "DBHstem2", "DBHstem3"), na.rm=T),
-#          totBA=rowSums(dplyr::select(.,"BA1", "BA2", "BA3"), na.rm=T),
-#          totDBH=ifelse(totDBH==0, NA, totDBH),
-#          totBA=ifelse(totBA==0, NA, totBA)) %>% 
-#   dplyr::select(c(tree.uniqueID, Site, Neighborhood, Species, totDBH, totBA))
 
 library(lubridate)
 
@@ -470,9 +444,6 @@ test <- raw_loc %>%
 loc_data <- raw_loc %>% 
   inner_join(dplyr::select(dia_data2, c(tree.uniqueID, Site, Neighborhood))) %>% ## there are some naming errors
   group_by(tree.uniqueID) %>% summarise_all(first)
-# loc_data <- loc_data %>%
-#   filter(Site=="Black Mountain") %>%
-#   filter(Neighborhood==3)
 
 loc_grid <- loc_data %>% 
   rename(Site.x=Site, Neighborhood.x=Neighborhood, tree.uniqueID.x=tree.uniqueID, X.x=X, Y.x=Y) %>% 
@@ -504,9 +475,6 @@ for(i in unique(loc_data$Site)) {
     site_area$area[which(site_area$Site==i&site_area$Neighborhood==j)] <- areaPolygon(coords)
   }
 }
-# 
-# plot(data)
-# lines(coords, col="red")
 
 write.csv(site_area, "Processed Data/site_area.csv", row.names = F)
 
@@ -541,8 +509,6 @@ hegyi <- dist_long %>%
   summarise(hegyi=sum(ratio, na.rm=T),
             BA = sum(compBA, na.rm=T)) 
 
-# plot(hegyi_old$BA, hegyi$BA)
-# hegyi_old <- hegyi
 write.csv(hegyi, "Processed Data/comp_density.csv", row.names=F)
 
 rings_field <- left_join(allrings, hegyi, by=c("tree.uniqueID"="focalID"))
@@ -712,7 +678,6 @@ MVNormal\left(\left[\begin{array}
 $$
 I think???? where **S** is the covariance matrix.  Can report priors here.
 ```{r legacy, echo=T, results='hide'}
-# dfx_yearly <- read.csv("Processed Data/dfx_yearly.csv")
 
 mod <- readRDS("Brms models/spline_growth models/spline_growth11_alldata.rds")
 
@@ -720,7 +685,6 @@ dfx_data <- filter(dfx_yearly, zeroRing=="no", Species!="AM") %>%
   mutate(unique.nb = paste0(Site, Neighborhood, sep="")) %>% 
   ungroup()
 dfx_data$Species[str_which(dfx_data$Species, "PP")] <- "PJ" 
-# dfx_data$Species <- droplevels(dfx_data$Species)
 
 for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
   print(i)
@@ -741,24 +705,6 @@ for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
   }
 }
 
-# for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
-#   print(i)
-#   for(j in unique(dfx_data$Year[which(dfx_data$tree.uniqueID==i)])) {
-#     newdata <- filter(dfx_data, tree.uniqueID==i&Year==j) %>% 
-#       dplyr::select(c(spei_post2, Species, unique.nb, tree.uniqueID, post2)) %>% 
-#       rename(spei12=spei_post2)
-#     
-#     pred_grow <- fitted(mod, newdata=newdata, summary=FALSE, nsamples = 500)
-#     newy_df <- data.frame(pred_grow) %>% 
-#       mutate(tree.uniqueID=i,
-#              Year=j,
-#              post2=newdata$post2,
-#              diff=post2-pred_grow)
-#     if(i==first(unique(dfx_data$tree.uniqueID))&j==min(dfx_data$Year[which(dfx_data$tree.uniqueID==i)])) {
-#       big_df2 <- newy_df
-#     } else {big_df2 <- bind_rows(big_df2, newy_df)}
-#   }
-# }
 
 legacy <- big_df %>%
   group_by(tree.uniqueID, Year) %>%
@@ -773,19 +719,6 @@ legacy <- big_df %>%
   left_join(dplyr::select(dfx_data, c(Year, Site, Species, Neighborhood, Region, hilo, tree.uniqueID, hegyi, BA, DBH, reduction,
                                spei12, post1, post2, spei_post1, spei_post2, Year_post1, Year_post2, drought_fx)))
 
-
-# legacy2 <- big_df2 %>% 
-#   group_by(tree.uniqueID, Year) %>% 
-#   summarise(pred_mean = mean(pred_grow, na.rm=T),
-#             pred_50 = quantile(pred_grow, .5, na.rm=T),
-#             pred_025 = quantile(pred_grow, .025, na.rm=T),
-#             pred_975 = quantile(pred_grow, .975, na.rm=T),
-#             leg2_mean = mean(diff, na.rm=T),
-#             leg2_50 = quantile(diff, .5, na.rm=T),
-#             leg2_025 = quantile(diff, .025, na.rm=T),
-#             leg2_975 = quantile(diff, .975, na.rm=T)) %>% 
-#   dplyr::select(-c(pred_mean, pred_50, pred_025, pred_975)) %>% 
-#   left_join(legacy)
 
 legacy$X <- NULL
 l_leg <- pivot_longer(legacy, c(leg1_mean, leg1_50, leg1_025, leg1_975
@@ -808,19 +741,16 @@ l_leg2 <- dplyr::select(legacy, c(tree.uniqueID, Year, spei_post1, spei_post2, Y
 
 l_leg1 <- filter(l_leg2, event=="post1")
 
-# write.csv(l_leg2, "Processed Data/legacy_long.csv", row.names = F)
 write.csv(l_leg1, "Processed Data/legacy_1post.csv", row.names = F)
 ```
 
 ```{r legacy_ar, echo=F, eval=F}
-# dfx_yearly <- read.csv("Processed Data/dfx_yearly.csv")
 
 mod <- readRDS("Brms models/spline_growth models/spline_growth12_alldata.rds")
 
 dfx_data <- filter(dfx_yearly, zeroRing=="no", Species!="AM") %>% 
    mutate(unique.nb = paste0(Site, Neighborhood, sep=""))
 dfx_data$Species[str_which(dfx_data$Species, "PP")] <- "PJ" 
-# dfx_data$Species <- droplevels(dfx_data$Species)
 
 for(i in unique(dfx_data$tree.uniqueID)){ # unique(dfx_data$tree.uniqueID)
   print(i)
@@ -883,7 +813,6 @@ l_leg2 <- dplyr::select(legacy, c(tree.uniqueID, Year, spei_post1, spei_post2, Y
 
 l_leg1 <- filter(l_leg2, event=="post1")
 
-# write.csv(l_leg2, "Processed Data/legacy_long.csv", row.names = F)
 write.csv(l_leg1, "Processed Data/legacy_1post_with ar.csv", row.names = F)
 
 ```

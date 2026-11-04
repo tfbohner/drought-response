@@ -1,3 +1,8 @@
+## prediction comparison
+## Compare predicted and observed growth for individual trees around drought years.
+## Author: Teresa Bohner
+## Data are not included in this repository (see README).
+
 mod <- readRDS("Brms models/spline_growth models/spline_growth11_alldata.rds")
 
 tree <- read.csv("Processed Data/dfx_allyears.csv") %>% 

@@ -1,5 +1,24 @@
+# R
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
+
+# Credentials (Google OAuth token cache)
 .secrets
+
+# Data and model fits never go in this repository
+Raw Data/
+Processed Data/
+Brms models/
+*_cache/
+*.csv
+*.rds
+*.rda
+*.RData
+*.rwl
+*.gsheet*
+
+# macOS
+.DS_Store
+Icon?

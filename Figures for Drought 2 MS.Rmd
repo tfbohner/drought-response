@@ -44,14 +44,6 @@ library(performance)
 ```{r data, include=F}
 sitechar <- read.csv("Raw Data/site characteristic table.csv")
 
-# l_leg <- read.csv("Processed Data/legacy_1post.csv") %>% 
-#   left_join(sitechar) %>% 
-#   group_by(Species) %>%
-#   mutate(log_hegyi=log(hegyi),
-#          dfx_score=scores(drought_fx, type="z"),
-#          recov_score=scores(recovery, type="z"),
-#          drought_fx=ifelse(dfx_score<=-3, NA, drought_fx),
-#          Region=factor(Region, levels=c("San Jac", "SENF", "SEKI", "Mammoth")))
 
 l_leg <- read.csv("Processed Data/legacy_modeling_data.csv") %>% 
   left_join(sitechar) %>% 
@@ -132,7 +124,6 @@ trees_area <- group_by(dia_data, Region, hilo, Site, Neighborhood, Species) %>%
             tph = density/(area),
             BA_ph=BA/(area))
   
-
 
 ```
 
@@ -584,23 +575,6 @@ kable(w2_pl, "html", caption="Table SX. P. lambertiana growth reduction WAIC tab
 
 ```
 ```{r resp_icc_tables}
-# h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
-#            "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"),
-#        paste("sd_Region__spei12^2 / (sd_Region__Intercept^2 +",
-#            "sd_Region__spei12^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
-# 
-# temp <- hypothesis(resp8_ac, h, class=NULL)[[1]]
-# temp$Hypothesis[1] <- "region intercept/total"
-# temp$Hypothesis[2] <- "region slope/total"
-# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, growth reduction)") 
-# temp <- hypothesis(resp8_pj, h, class=NULL)[[1]]
-# temp$Hypothesis[1] <- "region intercept/total"
-# temp$Hypothesis[2] <- "region slope/total"
-# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, growth reduction)") 
-# temp <- hypothesis(resp8_pl, h, class=NULL)[[1]]
-# temp$Hypothesis[1] <- "region intercept/total"
-# temp$Hypothesis[2] <- "region slope/total"
-# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, growth reduction)") 
 icc(resp8_ac, re.form=~(1|Region))
 icc(resp8_pj, re.form=~(1|Region))
 icc(resp8_pl, re.form=~(1|Region))
@@ -634,23 +608,6 @@ kable(w2_pl, "html", caption = "Table SX. P. lambertiana recovery WAIC table")
 
 ```{r recov_icc_tables}
 
-# h <- c(paste("sd_Region__Intercept^2 / (sd_Region__Intercept^2 +",
-#            "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"), 
-#        paste("sd_Region__drought_fx^2 / (sd_Region__Intercept^2 +",
-#            "sd_Region__drought_fx^2 + + sd_tree.uniqueID__Intercept^2 + sigma^2) = 0"))
-# 
-# temp <- hypothesis(recov8_ac, h, class=NULL)[[1]]
-# temp$Hypothesis[1] <- "region intercept/total"
-# temp$Hypothesis[2] <- "region slope/total"
-# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (AC, recovery)") 
-# temp <- hypothesis(recov8_pj, h, class=NULL)[[1]]
-# temp$Hypothesis[1] <- "region intercept/total"
-# temp$Hypothesis[2] <- "region slope/total"
-# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PJ, recovery)") 
-# temp <- hypothesis(recov8_pl, h, class=NULL)[[1]]
-# temp$Hypothesis[1] <- "region intercept/total"
-# temp$Hypothesis[2] <- "region slope/total"
-# kable(temp, "html", caption="Table SX. ICC for regionally varying parameters (PL, recovery)") 
 icc(recov8_ac, re.form=~(1|Region))
 icc(recov8_pj, re.form=~(1|Region))
 icc(recov8_pl, re.form=~(1|Region))
@@ -719,7 +676,6 @@ recov_cont <- bind_rows(mutate(cont_ac, Species="AC"),
                        mutate(cont_pl, Species="PL"))  %>% 
   mutate(signif=ifelse(.upper<0&.lower<0|.upper>0&.lower>0, "yes", "no"),
          param2=ifelse(param=="Intercept", "Intercept", "Slope"))
-
 
 
 ```
@@ -870,9 +826,6 @@ legend <- cowplot::get_legend(dummy)
 plot_grid(plot_grid(p1, p2, cols=1, align='vh'), legend, ncol=2, rel_widths = c(1, 0.15))
 
 
-
-# plot_grid(plot_grid(p1, p2, cols=1), legend, ncol=2, rel_widths = c(1, 0.2))
-
 ```
 
 
@@ -1001,13 +954,6 @@ get_pred_data <- function(data, model) {
 #### Param Plots
 
 ```{r q3_fig}  
-# 
-# bayes_R2(resp_full_ac)[1]-bayes_R2(resp8_ac)[1]
-# bayes_R2(resp_full_pj)[1]-bayes_R2(resp8_pj)[1]
-# bayes_R2(resp_full_pl)[1]-bayes_R2(resp8_pl)[1]
-# bayes_R2(recov_full_ac)[1]-bayes_R2(recov8_ac)[1]
-# bayes_R2(recov_full_pj)[1]-bayes_R2(recov8_pj)[1]
-# bayes_R2(recov_full_pl)[1]-bayes_R2(recov8_pl)[1]
 
 sp_lab <- c(AC="A. concolor", PJ="P. jeffreyi", PL="P. lambertiana")
 p1 <- ggplot(filter(resp_all, global=="global"), aes(y = param, x = .value, xmin = .lower, xmax = .upper, color=region)) +
@@ -1436,7 +1382,6 @@ ggplot(pl_pred, aes(x = spei12, y = .value)) +
   guides(fill=FALSE)+
   ggtitle("PL DBH") 
 ```
-
 
 
 #### Recovery

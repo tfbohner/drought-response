@@ -1,4 +1,7 @@
-# models for ch2 draft results
+## response recovery models final
+## Bayesian models (brms) of growth reduction during drought and recovery afterward: species differences, regional and site structure, and tree size and competition effects. Run on a server.
+## Author: Teresa Bohner
+## Data are not included in this repository (see README).
 
 library(tidyverse)
 library(brms)
@@ -39,10 +42,6 @@ summary <- group_by(l_leg, tree.uniqueID) %>%
 for(i in 0:3){
   assign(paste("resp", i, sep=""), readRDS(paste("Brms models/final rr models/resp", i, ".rds", sep="")), envir = .GlobalEnv)
 }
-# 
-# for(i in 1:10){
-#   assign(paste("recov", i, sep=""), readRDS(paste("Brms models/final rr models/recov", i, ".rds", sep="")), envir = .GlobalEnv)
-# }
 bprior <- prior_string("normal(0,10)", class = "b")
 
 #### Q1: Species level differences----
@@ -62,7 +61,6 @@ plot(hyp)
 
 plot(marginal_effects(resp0), points = TRUE)
 
-# resp1 <- brm(drought_fx~Species + (1|tree.uniqueID), data=l_leg, cores=4)
 resp2 <- update(resp0, formula. = ~ . - Species + spei12, newdata=l_leg, cores=4)
 resp3 <- update(resp0, formula. = ~ . + spei12, newdata=l_leg, cores=4)
 resp4 <- update(resp0, formula. = ~ . + spei12*Species, newdata=l_leg, cores=4)
@@ -84,15 +82,6 @@ loo_model_weights(list(l1, l2, l3, l4), method="pseudobma")
 loo_model_weights(list(l3, l4), method="pseudobma")
 
 model_weights(resp1, resp2, resp3, resp4, weights = "waic")
-# b1 <- add_criterion(resp1, "waic")
-# b2 <- add_criterion(resp2, "waic")
-# b3 <- add_criterion(resp3, "waic")
-# b4 <- add_criterion(resp4, "waic")
-# 
-# w <- loo_compare(b1, b2, b3, b4, criterion = "waic")
-# print(w, simplify = F)
-# cbind(waic_diff = w[, 1] * -2,
-#       se        = w[, 2] *  2)
 
 ## recovery
 recov0 <- brm(bf(recovery~Species + (1|tree.uniqueID), sigma~Species), family=gaussian(), data=l_leg, cores=4)
@@ -109,8 +98,6 @@ hyp <- "exp(sigma_SpeciesPL) > exp(sigma_SpeciesPJ)"
 plot(hyp)
 
 
-
-# recov1 <- brm(recovery~Species + (1|tree.uniqueID), data=l_leg, cores=4)
 recov2 <- update(recov0, formula. = ~ . + drought_fx - Species, newdata=l_leg, cores=4)
 recov3 <- update(recov0, formula. = ~ . + drought_fx, newdata=l_leg, cores=4)
 recov4 <- update(recov0, formula. = ~ . + drought_fx + drought_fx:Species, newdata=l_leg, cores=4)
@@ -132,35 +119,10 @@ for(i in 2:4){
 loo_model_weights(list(l1a, l2a, l3a, l4a))
 loo_model_weights(list(l3a, l4a))
 model_weights(recov1, recov2, recov3, recov4, weights = "waic")
-# b1a <- add_criterion(recov1, "waic")
-# b2a <- add_criterion(recov2, "waic")
-# b3a <- add_criterion(recov3, "waic")
-# b4a <- add_criterion(recov4, "waic")
-# 
-# w <- loo_compare(b1a, b2a, b3a, b4a, criterion = "waic")
-# print(w, simplify = F)
-# cbind(waic_diff = w[, 1] * -2,
-#       se        = w[, 2] *  2)
 
 #### Q2 Regional differences----
 ## response
 
-# resp5 <- brm(drought_fx~spei12 + (1|tree.uniqueID) + (1|Region/hilo), data=l_leg, cores=4, control=list(adapt_delta=0.99))
-# resp6 <- brm(drought_fx~spei12 + (1|tree.uniqueID) + (spei12|Region/hilo), data=l_leg, cores=4, control=list(adapt_delta=0.99))
-# resp7 <- brm(drought_fx~spei12 + (1|tree.uniqueID) + (1|Region), data=l_leg, cores=4, control=list(adapt_delta=0.99))
-# resp8 <- brm(drought_fx~spei12 + (1|tree.uniqueID) + (spei12|Region), data=l_leg, cores=4, control=list(adapt_delta=0.99))
-# 
-# for(i in 5:8){
-#   mod <- get(paste("resp", i, sep="")) 
-#   saveRDS(mod, paste("Brms models/final rr models/resp", i, ".rds", sep=""))
-#   
-#   mod <- get(paste("resp", i, sep="")) 
-#   lx <- loo(mod)
-#   assign(paste0("l", i), lx)
-# }
-# 
-# loo_model_weights(list(l5, l6, l7, l8))
-# model_weights(resp5, resp6, resp7, resp8, weights = "waic")
 
 spp_modeler <- function(data, spp, form) {
   sub <- filter(data, Species==spp)
@@ -262,23 +224,9 @@ spp_modeler2 <- function(data, spp, model) {
 
 ### Full models ----
             
-# resp_full <- brm(drought_fx~spei12 + DBH + log_hegyi + spei12:DBH + spei12:log_hegyi +
-#                    (1|tree.uniqueID) + (spei12+DBH+log_hegyi|Region + Species),
-#                  data=l_leg, cores=4, prior=set_prior(horseshoe(df = 3, par_ratio = 0.1)), iter=4000, control=list(adapt_delta=0.999, max_treedepth=14))
-# saveRDS(resp_full, "Brms models/final rr models/resp_full.rds")
-# 
-# recov_full <- brm(recovery~drought_fx + DBH + log_hegyi + drought_fx:DBH + drought_fx:log_hegyi +
-#                    (1|tree.uniqueID) + (drought_fx+DBH+log_hegyi|Region + Species),
-#                  data=l_leg, cores=4, prior=set_prior(horseshoe(df = 3, par_ratio = 0.1)),  iter=4000, control=list(adapt_delta=0.999, max_treedepth=14))
-# saveRDS(recov_full, "Brms models/final rr models/recov_full.rds")
-
-
 
 ### Species Full models ----
 
-# resp_mod <- bf(drought_fx~spei12 + DBH + log_hegyi + spei12:DBH + spei12:log_hegyi + 
-#                   (1|tree.uniqueID) + 
-#                   (spei12+DBH+log_hegyi + spei12:DBH + spei12:log_hegyi|Region))
 resp_mod <- bf(drought_fx~spei12 + DBH + comp + spei12:DBH + spei12:comp + 
                  (1|tree.uniqueID) + 
                  (spei12|Region))
@@ -290,13 +238,6 @@ saveRDS(resp_full_pj, "Brms models/final rr models/resp_full_pj.rds")
 resp_full_pl <- spp_modeler2(l_leg, "PL", resp_full_ac)
 saveRDS(resp_full_pl, "Brms models/final rr models/resp_full_pl.rds")
 
-
-# recov_mod <- bf(recovery~drought_fx + DBH + log_hegyi + drought_fx:DBH + drought_fx:log_hegyi + 
-#                   (1|tree.uniqueID) + 
-#                   (drought_fx+DBH+log_hegyi + drought_fx:DBH + drought_fx:log_hegyi|Region))
-# recov_mod <- bf(recovery~drought_fx + DBH + log_hegyi + drought_fx:DBH + drought_fx:log_hegyi + 
-#                   (1|tree.uniqueID) + 
-#                   (drought_fx|Region))
 
 recov_mod <- bf(recovery~drought_fx + DBH + comp + drought_fx:DBH + drought_fx:comp + 
                   (1|tree.uniqueID) + 
